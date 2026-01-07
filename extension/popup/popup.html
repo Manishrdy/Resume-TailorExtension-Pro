@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Tailor AI</title>
+    <link rel="stylesheet" href="../assets/css/styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Stunning Header with Gradient -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">
+                    <span class="logo-icon">✨</span>
+                    <span class="logo-text">Resume Tailor AI</span>
+                </h1>
+                <p class="tagline">Transform Your Resume with AI</p>
+            </div>
+        </header>
+
+        <!-- Sleek Tab Navigation -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="resume">
+                <span class="tab-icon">📋</span>
+                <span class="tab-label">Resume</span>
+            </button>
+            <button class="tab-btn" data-tab="tailor">
+                <span class="tab-icon">🎯</span>
+                <span class="tab-label">Tailor</span>
+            </button>
+            <button class="tab-btn" data-tab="history">
+                <span class="tab-icon">📚</span>
+                <span class="tab-label">History</span>
+            </button>
+            <button class="tab-btn" data-tab="settings">
+                <span class="tab-icon">⚙️</span>
+                <span class="tab-label">Settings</span>
+            </button>
+        </nav>
+
+        <!-- Tab: Resume -->
+        <div class="tab-content active" id="resume-tab">
+            <div class="content-wrapper">
+                <div class="section-header">
+                    <h2 class="section-title">Your Resume Profiles</h2>
+                    <p class="section-subtitle">Manage your professional resumes</p>
+                </div>
+                
+                <div class="profile-selector-wrapper">
+                    <div class="select-wrapper">
+                        <select id="resume-select" class="form-select">
+                            <option value="">Choose a resume profile...</option>
+                        </select>
+                    </div>
+                    <button id="new-resume-btn" class="btn btn-primary btn-with-icon">
+                        <span class="btn-icon">➕</span>
+                        <span>Create New</span>
+                    </button>
+                </div>
+
+                <div id="resume-preview" class="resume-card hidden">
+                    <div class="resume-card-header">
+                        <div class="resume-avatar">
+                            <span class="avatar-icon">👤</span>
+                        </div>
+                        <div class="resume-info">
+                            <h3 id="preview-name" class="resume-name">John Doe</h3>
+                            <p id="preview-email" class="resume-email">john@example.com</p>
+                        </div>
+                    </div>
+                    
+                    <div class="resume-stats">
+                        <div class="stat-item">
+                            <span class="stat-icon">💼</span>
+                            <span class="stat-value"><span id="exp-count">0</span> Experience</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-icon">🎓</span>
+                            <span class="stat-value"><span id="edu-count">0</span> Education</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-icon">🚀</span>
+                            <span class="stat-value"><span id="proj-count">0</span> Projects</span>
+                        </div>
+                    </div>
+
+                    <div class="resume-actions">
+                        <button id="edit-resume-btn" class="btn btn-secondary btn-icon-only">
+                            <span>✏️</span> Edit
+                        </button>
+                        <button id="export-json-btn" class="btn btn-secondary btn-icon-only">
+                            <span>📦</span> Export
+                        </button>
+                        <button id="delete-resume-btn" class="btn btn-danger btn-icon-only">
+                            <span>🗑️</span> Delete
+                        </button>
+                    </div>
+
+                    <div class="resume-actions resume-actions--secondary">
+                        <button id="export-all-btn" class="btn btn-secondary btn-icon-only btn-compact" title="Export all saved resumes into a single backup file">
+                            <span>🧾</span> Export All
+                        </button>
+                        <button id="import-resumes-btn" class="btn btn-secondary btn-icon-only btn-compact" title="Import a previously exported backup JSON file">
+                            <span>📥</span> Import
+                        </button>
+                        <button id="clear-storage-btn" class="btn btn-secondary btn-icon-only btn-compact btn-danger-outline" title="Remove resumes, history, and drafts from this browser">
+                            <span>🧹</span> Clear
+                        </button>
+                        <input id="import-file-input" class="hidden" type="file" accept="application/json,.json">
+                    </div>
+</div>
+            </div>
+        </div>
+
+        <!-- Tab: Tailor -->
+        <div class="tab-content" id="tailor-tab">
+            <div class="content-wrapper">
+                <div class="section-header">
+                    <h2 class="section-title">AI Resume Tailoring</h2>
+                    <p class="section-subtitle">Optimize for specific job postings</p>
+                </div>
+
+                <div class="info-card">
+                    <div class="info-icon">📄</div>
+                    <div class="info-content">
+                        <strong>Selected Resume:</strong>
+                        <span id="current-resume-name" class="info-value">None selected</span>
+                    </div>
+                </div>
+
+                <div class="job-description-section">
+                    <label class="form-label">Job Description</label>
+                    <button id="scrape-btn" class="btn btn-primary btn-with-icon btn-full">
+                        <span class="btn-icon">🔍</span>
+                        <span>Auto-Scrape from Current Tab</span>
+                    </button>
+                    <div class="divider">
+                        <span>or paste manually</span>
+                    </div>
+                    <textarea id="job-description" class="form-textarea" rows="8" 
+                        placeholder="Paste the job description here...&#10;&#10;Include requirements, responsibilities, and qualifications for best results."></textarea>
+                </div>
+
+                <button id="tailor-btn" class="btn btn-success btn-large btn-with-icon" disabled>
+                    <span class="btn-icon">✨</span>
+                    <span>Tailor Resume with AI</span>
+                </button>
+
+                <!-- Loading State -->
+                <div id="loading" class="loading-overlay hidden">
+                    <div class="loading-content">
+                        <div class="spinner-modern"></div>
+                        <p class="loading-text">AI is analyzing and optimizing your resume...</p>
+                        <p class="loading-subtext">This may take 10-15 seconds</p>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div id="results" class="results-section hidden">
+                    <div class="ats-card">
+                        <div class="ats-header">
+                            <h3>ATS Compatibility</h3>
+                            <p>Applicant Tracking System Score</p>
+                        </div>
+                        <div class="ats-score-display">
+                            <div class="ats-circle">
+                                <svg class="ats-circle-svg" viewBox="0 0 120 120">
+                                    <circle class="ats-circle-bg" cx="60" cy="60" r="54"></circle>
+                                    <circle class="ats-circle-progress" cx="60" cy="60" r="54"></circle>
+                                </svg>
+                                <div class="ats-score-text">
+                                    <span id="ats-score" class="ats-score-number">0</span>
+                                    <span class="ats-score-max">/100</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="keywords-grid">
+                        <div class="keywords-card matched">
+                            <div class="keywords-header">
+                                <span class="keywords-icon">✅</span>
+                                <h4>Matched Keywords</h4>
+                                <span class="keywords-count" id="matched-count">0</span>
+                            </div>
+                            <div id="matched-keywords" class="keywords-container"></div>
+                        </div>
+
+                        <div class="keywords-card missing">
+                            <div class="keywords-header">
+                                <span class="keywords-icon">⚠️</span>
+                                <h4>Missing Keywords</h4>
+                                <span class="keywords-count" id="missing-count">0</span>
+                            </div>
+                            <div id="missing-keywords" class="keywords-container"></div>
+                        </div>
+                    </div>
+
+                    <button id="download-pdf-btn" class="btn btn-success btn-large btn-with-icon">
+                        <span class="btn-icon">📥</span>
+                        <span>Download Tailored PDF</span>
+                    </button>
+                </div>
+
+                <!-- Messages -->
+                <div id="error-msg" class="alert alert-error hidden"></div>
+                <div id="success-msg" class="alert alert-success hidden"></div>
+            </div>
+        </div>
+
+        <!-- Tab: History -->
+        <div class="tab-content" id="history-tab">
+            <div class="content-wrapper">
+                <div class="section-header">
+                    <h2 class="section-title">Tailoring History</h2>
+                    <p class="section-subtitle">Your previously tailored resumes</p>
+                </div>
+                
+                <div id="history-list" class="history-grid">
+                    <div class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <h3>No History Yet</h3>
+                        <p>Your tailored resumes will appear here</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Settings -->
+        <div class="tab-content" id="settings-tab">
+            <div class="content-wrapper">
+                <div class="section-header">
+                    <h2 class="section-title">Settings</h2>
+                    <p class="section-subtitle">Configure your preferences</p>
+                </div>
+
+                <div class="settings-card">
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <span class="setting-icon">🔗</span>
+                            <div class="setting-info">
+                                <strong>Backend API URL</strong>
+                                <small>FastAPI backend endpoint</small>
+                            </div>
+                        </label>
+                        <input type="text" id="api-url" class="form-input" value="http://localhost:8000">
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="setting-label">
+                            <span class="setting-icon">🌙</span>
+                            <div class="setting-info">
+                                <strong>Dark Mode</strong>
+                                <small>Toggle dark theme</small>
+                            </div>
+                        </label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="dark-mode-toggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-actions">
+                    <button id="save-settings-btn" class="btn btn-primary btn-with-icon">
+                        <span class="btn-icon">💾</span>
+                        <span>Save Settings</span>
+                    </button>
+                    <button id="test-connection-btn" class="btn btn-secondary btn-with-icon">
+                        <span class="btn-icon">🔌</span>
+                        <span>Test Connection</span>
+                    </button>
+                </div>
+
+                <div id="connection-status" class="connection-status hidden"></div>
+            </div>
+        </div>
+
+        <!-- Glassmorphic Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <span class="footer-icon">📌</span>
+                <span id="current-profile-footer" class="footer-text">No profile selected</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Beautiful Modal -->
+    <div id="resume-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-container">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <div class="modal-title-wrapper">
+                        <span class="modal-icon">✨</span>
+                        <h2 id="modal-title" class="modal-title">Create New Resume</h2>
+                    </div>
+                    <button class="modal-close" id="modal-close" type="button" aria-label="Close resume editor">
+                        <span aria-hidden="true">✕</span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <form id="resume-form">
+                        <!-- Resume Name -->
+                        <div class="form-section">
+                            <div class="form-section-header">
+                                <h3 class="form-section-title">📝 Resume Name</h3>
+                            </div>
+                            <input type="text" name="resumeName" class="form-input" 
+                                placeholder="e.g., Backend Engineer, Full Stack Developer, Data Scientist" required>
+                        </div>
+
+                        <!-- Personal Info -->
+                        <div class="form-section">
+                            <div class="form-section-header">
+                                <h3 class="form-section-title">👤 Personal Information</h3>
+                            </div>
+                            
+                            <div class="form-grid">
+                                <div class="form-field">
+                                    <label class="form-field-label">Full Name *</label>
+                                    <input type="text" name="name" class="form-input" placeholder="John Doe" required>
+                                </div>
+                                <div class="form-field">
+                                    <label class="form-field-label">Email *</label>
+                                    <input type="email" name="email" class="form-input" placeholder="john@example.com" required>
+                                </div>
+                                <div class="form-field">
+                                    <label class="form-field-label">Phone</label>
+                                    <input type="tel" name="phone" class="form-input" placeholder="909-449-2624">
+                                </div>
+                                <div class="form-field">
+                                    <label class="form-field-label">Location</label>
+                                    <input type="text" name="location" class="form-input" placeholder="Los Angeles, CA">
+                                </div>
+                                <div class="form-field">
+                                    <label class="form-field-label">LinkedIn</label>
+                                    <input type="url" name="linkedin" class="form-input" placeholder="linkedin.com/in/username">
+                                </div>
+                                <div class="form-field">
+                                    <label class="form-field-label">Portfolio</label>
+                                    <input type="url" name="portfolio" class="form-input" placeholder="yourwebsite.com">
+                                </div>
+                            </div>
+
+                            <div class="form-field">
+                                <label class="form-field-label">GitHub</label>
+                                <input type="url" name="github" class="form-input" placeholder="github.com/username">
+                            </div>
+
+                            <div class="form-field">
+                                <label class="form-field-label">Professional Summary *</label>
+                                <textarea name="summary" class="form-textarea" rows="4" 
+                                    placeholder="Backend Engineer with 3+ years of experience designing and building scalable systems..." required></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Work Experience -->
+                        <div class="form-section">
+                            <div class="form-section-header">
+                                <h3 class="form-section-title">💼 Work Experience</h3>
+                            </div>
+                            <div id="experience-container" class="dynamic-container"></div>
+                            <button type="button" class="btn btn-secondary btn-add" id="add-experience">
+                                <span>➕</span> Add Experience
+                            </button>
+                        </div>
+
+                        <!-- Education -->
+                        <div class="form-section">
+                            <div class="form-section-header">
+                                <h3 class="form-section-title">🎓 Education</h3>
+                            </div>
+                            <div id="education-container" class="dynamic-container"></div>
+                            <button type="button" class="btn btn-secondary btn-add" id="add-education">
+                                <span>➕</span> Add Education
+                            </button>
+                        </div>
+
+                        <!-- Projects -->
+                        <div class="form-section">
+                            <div class="form-section-header">
+                                <h3 class="form-section-title">🚀 Projects</h3>
+                            </div>
+                            <div id="projects-container" class="dynamic-container"></div>
+                            <button type="button" class="btn btn-secondary btn-add" id="add-project">
+                                <span>➕</span> Add Project
+                            </button>
+                        </div>
+
+                        <!-- Skills -->
+                        <div class="form-section">
+                            <div class="form-section-header">
+                                <h3 class="form-section-title">⚡ Skills</h3>
+                                <p class="form-section-subtitle">Add categories like "Programming Languages", "Frameworks", etc.</p>
+                            </div>
+                            <div id="skills-container" class="dynamic-container"></div>
+                            <button type="button" class="btn btn-secondary btn-add" id="add-skill">
+                                <span>➕</span> Add Skill Category
+                            </button>
+                        </div>
+
+                        <!-- Form Actions -->
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" id="clear-draft-btn">Clear Draft</button>
+                            <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+                            <button type="submit" class="btn btn-success btn-with-icon">
+                                <span class="btn-icon">💾</span>
+                                <span>Save Resume</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="../assets/js/storage.js"></script>
+    <script src="../assets/js/api.js"></script>
+    <script src="../popup/popup.js"></script>
+</body>
+</html>

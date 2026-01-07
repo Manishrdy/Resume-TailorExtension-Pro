@@ -1,0 +1,31 @@
+# FastAPI and ASGI server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# HTTP client for calling Open Resume service
+httpx==0.26.0
+
+# Logging
+loguru==0.7.2
+
+# NEW Google Gemini AI SDK
+google-genai==0.2.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Testing (pytest and related)
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Code quality
+black==24.1.1
+flake8==7.0.0
+mypy==1.8.0
+
+# Type hints
+types-requests==2.31.0.20240125

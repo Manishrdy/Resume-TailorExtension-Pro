@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # FastAPI Backend Service (Development)
+  fastapi-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resume-tailor-api-dev
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_URL=http://localhost:8000
+      - OPEN_RESUME_URL=http://open-resume-dev:3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-your_api_key_here}
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=console
+    volumes:
+      # Mount source code for hot reload
+      - ./backend/src:/app:delegated
+      - ./backend/logs:/app/logs
+      # Exclude Python cache
+      - /app/__pycache__
+    networks:
+      - resume-tailor-dev-network
+    depends_on:
+      - open-resume-dev
+    restart: unless-stopped
+
+  # Open Resume PDF Service (Development)
+  open-resume-dev:
+    build:
+      context: ./open-resume-service
+      dockerfile: Dockerfile
+    container_name: resume-tailor-pdf-dev
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    volumes:
+      # Mount source for hot reload
+      - ./open-resume-service:/app:delegated
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - resume-tailor-dev-network
+    restart: unless-stopped
+
+networks:
+  resume-tailor-dev-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local

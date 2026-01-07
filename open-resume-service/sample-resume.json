@@ -1,0 +1,112 @@
+{
+  "id": "sample-resume-001",
+  "name": "Software Engineer Resume",
+  "personalInfo": {
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "phone": "+1-555-123-4567",
+    "location": "San Francisco, CA",
+    "linkedin": "https://linkedin.com/in/johndoe",
+    "github": "https://github.com/johndoe",
+    "website": "https://johndoe.com",
+    "summary": "Experienced software engineer with 5+ years in full-stack development, specializing in Python, React, and cloud architecture. Proven track record of building scalable systems and leading technical teams."
+  },
+  "education": [
+    {
+      "institution": "Stanford University",
+      "degree": "Bachelor of Science",
+      "field": "Computer Science",
+      "startDate": "2015-09",
+      "endDate": "2019-06",
+      "gpa": "3.8/4.0",
+      "achievements": [
+        "Dean's List all semesters",
+        "President of CS Student Association",
+        "Published research paper on distributed systems"
+      ]
+    }
+  ],
+  "experience": [
+    {
+      "company": "Tech Corp",
+      "position": "Senior Software Engineer",
+      "location": "San Francisco, CA",
+      "startDate": "2021-01",
+      "endDate": "Present",
+      "description": [
+        "Led development of microservices architecture serving 10M+ users with 99.9% uptime",
+        "Reduced API response time by 40% through caching and query optimization",
+        "Mentored 5 junior engineers and conducted code reviews for team of 15",
+        "Implemented CI/CD pipeline using GitHub Actions, reducing deployment time by 60%"
+      ]
+    },
+    {
+      "company": "StartupXYZ",
+      "position": "Software Engineer",
+      "location": "Palo Alto, CA",
+      "startDate": "2019-07",
+      "endDate": "2020-12",
+      "description": [
+        "Developed React-based dashboard with real-time analytics processing 1M events/day",
+        "Built RESTful APIs using Python FastAPI with comprehensive test coverage (95%)",
+        "Collaborated with cross-functional teams of 20+ members in agile environment",
+        "Optimized database queries reducing load time by 50%"
+      ]
+    }
+  ],
+  "skills": [
+    "Python",
+    "JavaScript",
+    "TypeScript",
+    "React",
+    "FastAPI",
+    "Node.js",
+    "Docker",
+    "Kubernetes",
+    "AWS",
+    "PostgreSQL",
+    "MongoDB",
+    "Redis",
+    "Git",
+    "CI/CD"
+  ],
+  "projects": [
+    {
+      "name": "Resume Tailor",
+      "description": "AI-powered resume optimization tool using FastAPI backend and React Chrome extension",
+      "technologies": ["Python", "FastAPI", "React", "TypeScript", "Docker", "Google Gemini AI"],
+      "link": "https://github.com/johndoe/resume-tailor",
+      "highlights": [
+        "Integrated Google Gemini AI for intelligent resume analysis and keyword matching",
+        "Built Chrome extension with 1000+ active users and 4.5-star rating",
+        "Implemented PDF generation with ATS-friendly formatting"
+      ],
+      "startDate": "2024-01",
+      "endDate": "2024-12"
+    },
+    {
+      "name": "E-commerce Platform",
+      "description": "Full-stack e-commerce platform with payment integration and real-time inventory",
+      "technologies": ["React", "Node.js", "PostgreSQL", "Stripe", "AWS"],
+      "link": "https://github.com/johndoe/ecommerce",
+      "highlights": [
+        "Processed $100K+ in transactions with 99.99% payment success rate",
+        "Implemented real-time inventory management using WebSockets",
+        "Deployed on AWS with auto-scaling handling 10K+ concurrent users"
+      ],
+      "startDate": "2023-06",
+      "endDate": "2023-12"
+    }
+  ],
+  "certifications": [
+    {
+      "name": "AWS Certified Solutions Architect",
+      "issuer": "Amazon Web Services",
+      "date": "2023-05",
+      "credentialId": "AWS-SA-12345",
+      "url": "https://aws.amazon.com/certification/"
+    }
+  ],
+  "createdAt": "2024-01-15T10:30:00Z",
+  "updatedAt": "2024-01-15T10:30:00Z"
+}

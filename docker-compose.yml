@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # FastAPI Backend Service
+  fastapi:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resume-tailor-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_URL=http://localhost:8000
+      - OPEN_RESUME_URL=http://open-resume:3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=console
+    volumes:
+      - ./backend/src:/app
+      - ./backend/logs:/app/logs
+    networks:
+      - resume-tailor-network
+    depends_on:
+      - open-resume
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Open Resume PDF Service
+  open-resume:
+    build:
+      context: ./open-resume-service
+      dockerfile: Dockerfile
+    container_name: resume-tailor-pdf
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    networks:
+      - resume-tailor-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+networks:
+  resume-tailor-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local

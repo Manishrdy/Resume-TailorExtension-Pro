@@ -1,0 +1,35 @@
+{
+    "manifest_version": 3,
+    "name": "Resume Tailor AI",
+    "version": "1.0.0",
+    "description": "AI-powered resume optimizer with ATS scoring and PDF generation",
+    "permissions": [
+        "storage",
+        "activeTab",
+        "scripting",
+        "downloads"
+    ],
+    "host_permissions": [
+        "http://localhost:8000/*",
+        "http://*/*",
+        "https://*/*"
+    ],
+    "action": {
+        "default_popup": "popup/popup.html"
+    },
+    "background": {
+        "service_worker": "background/background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "http://*/*",
+                "https://*/*"
+            ],
+            "js": [
+                "content/scraper.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ]
+}
