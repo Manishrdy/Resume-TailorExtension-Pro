@@ -1,0 +1,86 @@
+{
+  "tailoredResume": {
+    "id": "test-resume-001",
+    "name": "Software Engineer Resume",
+    "personalInfo": {
+      "name": "John Doe",
+      "email": "john.doe@example.com",
+      "phone": "+1",
+      "location": "San Francisco, CA",
+      "linkedin": "https://linkedin.com/in/johndoe",
+      "github": "https://github.com/johndoe",
+      "website": "https://johndoe.com",
+      "summary": "Experienced software engineer with 5+ years in full-stack development"
+    },
+    "education": [
+      {
+        "institution": "Stanford University",
+        "degree": "Bachelor of Science",
+        "field": "Computer Science",
+        "startDate": "2015-09",
+        "endDate": "2019-06",
+        "gpa": "3.8/4.0",
+        "achievements": [
+          "Dean's List all semesters",
+          "President of CS Student Association"
+        ]
+      }
+    ],
+    "experience": [
+      {
+        "company": "Tech Corp",
+        "position": "Senior Software Engineer",
+        "location": "San Francisco, CA",
+        "startDate": "2021-01",
+        "endDate": "Present",
+        "description": [
+          "Led development of microservices architecture serving 10M+ users",
+          "Reduced API response time by 40% through optimization",
+          "Mentored 5 junior engineers in best practices"
+        ]
+      },
+      {
+        "company": "StartupXYZ",
+        "position": "Software Engineer",
+        "location": "Palo Alto, CA",
+        "startDate": "2019-07",
+        "endDate": "2020-12",
+        "description": [
+          "Developed React-based dashboard with real-time analytics",
+          "Implemented CI/CD pipeline reducing deployment time by 60%",
+          "Collaborated with cross-functional teams of 20+ members"
+        ]
+      }
+    ],
+    "skills": [
+      "Python",
+      "JavaScript",
+      "TypeScript",
+      "React",
+      "FastAPI",
+      "Docker",
+      "AWS",
+      "PostgreSQL"
+    ],
+    "projects": [
+      {
+        "name": "Resume Tailor",
+        "description": "AI-powered resume optimization tool using FastAPI and React",
+        "technologies": [
+          "Python",
+          "FastAPI",
+          "React",
+          "TypeScript",
+          "Docker"
+        ],
+        "link": "https://github.com/johndoe/resume-tailor",
+        "highlights": [
+          "Integrated Google Gemini AI for intelligent resume analysis",
+          "Built Chrome extension with 1000+ active users"
+        ],
+        "startDate": "2024-01",
+        "endDate": "2024-12"
+      }
+    ],
+    "certifications": [],
+    "createdAt": 

@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from models.resume import TailorRequest, TailorResponse, ErrorResponse
 from services.gemini import get_gemini_service
 from utils.logger import logger, log_error
+from utils import artifacts
 
 router = APIRouter()
 
@@ -114,6 +115,15 @@ async def tailor_resume(request: TailorRequest):
             logger.info(
                 f"Missing keywords: {', '.join(tailor_response.missingKeywords[:10])}..."
             )
+
+        # Save tailored JSON artifact to a unique session folder
+        session_path = artifacts.start_session(request.resume, request.targetRole)
+        date_str = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+        candidate_name = request.resume.personalInfo.name.replace(" ", "_")
+        json_filename = f"{candidate_name}_Tailored_{date_str}.json"
+        artifacts.save_json(session_path, tailor_response.model_dump_json(indent=2), json_filename)
+
+        logger.info(f"🧾 Tailored resume JSON saved to: {session_path / json_filename}")
 
         return tailor_response
 

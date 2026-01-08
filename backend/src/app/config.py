@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Union[str, List[str]] = "chrome-extension://*,http://localhost:5173,http://localhost:3000"
 
     # Open Resume Service Configuration
-    OPEN_RESUME_URL: str = "http://localhost:3000"
+    OPEN_RESUME_URL: str = "http://localhost:3001"
     OPEN_RESUME_API_TIMEOUT: int = 30
 
     # Gemini AI Configuration (NEW google-genai package)

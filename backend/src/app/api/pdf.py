@@ -9,6 +9,7 @@ from datetime import datetime
 
 from models.resume import GeneratePDFRequest
 from services import pdf_client
+from utils import artifacts
 from utils.logger import logger, log_error
 
 router = APIRouter()
@@ -93,6 +94,12 @@ async def generate_pdf(request: GeneratePDFRequest):
         logger.info(f"   Filename: {filename}")
         logger.info(f"   Size: {len(pdf_bytes) / 1024:.2f} KB")
         logger.info("=" * 80)
+
+        # Save PDF to the latest artifact session (or create a new one)
+        session_path = artifacts.get_latest_session(request.resume.id)
+        if session_path is None:
+            session_path = artifacts.start_session(request.resume)
+        artifacts.save_pdf(session_path, pdf_bytes, filename)
 
         # Return PDF with proper headers
         return Response(

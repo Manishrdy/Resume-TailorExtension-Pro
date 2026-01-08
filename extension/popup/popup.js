@@ -93,6 +93,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadResumes();
     await loadSettings();
     await loadHistory();
+    await restoreRecentTailoredResume();
     setupEventListeners();
     updateCurrentProfileDisplay();
 });
@@ -1445,6 +1446,44 @@ function updateTailorButton() {
     elements.tailorBtn.disabled = !(hasResume && hasJD);
 }
 
+// Restore Recent Tailored Resume from localStorage
+async function restoreRecentTailoredResume() {
+    try {
+        const recentData = localStorage.getItem('recentTailoredResume');
+        if (!recentData) return;
+
+        const data = JSON.parse(recentData);
+        const timestampMs = new Date(data.timestamp).getTime();
+        const nowMs = new Date().getTime();
+        const ageHours = (nowMs - timestampMs) / (1000 * 60 * 60);
+
+        // Only restore if less than 24 hours old
+        if (ageHours > 24) {
+            localStorage.removeItem('recentTailoredResume');
+            return;
+        }
+
+        // Set the tailored resume
+        tailoredResume = data.resume;
+
+        // Display results in the tailor tab
+        displayResults({
+            atsScore: data.atsScore,
+            matchedKeywords: data.matchedKeywords || [],
+            missingKeywords: data.missingKeywords || []
+        });
+
+        // Show the results section
+        elements.loading.classList.add('hidden');
+        elements.results.classList.remove('hidden');
+
+        console.log('✅ Restored recent tailored resume from localStorage:', data.sourceResumeName);
+    } catch (error) {
+        console.error('Failed to restore recent tailored resume:', error);
+        localStorage.removeItem('recentTailoredResume');
+    }
+}
+
 // Handle Tailor
 async function handleTailor() {
     if (!currentResume) {
@@ -1477,6 +1516,22 @@ async function handleTailor() {
 
         // Store tailored resume
         tailoredResume = result.tailoredResume;
+
+        // Save to localStorage as recent tailored resume
+        try {
+            localStorage.setItem('recentTailoredResume', JSON.stringify({
+                resume: result.tailoredResume,
+                sourceResumeName: currentResume.name,
+                sourceResumeId: currentResume.id,
+                jobDescription: jobDesc,
+                atsScore: result.atsScore,
+                matchedKeywords: result.matchedKeywords,
+                missingKeywords: result.missingKeywords,
+                timestamp: new Date().toISOString()
+            }));
+        } catch (e) {
+            console.warn('Failed to save recent tailored resume to localStorage:', e);
+        }
 
         // Display results
         displayResults(result);

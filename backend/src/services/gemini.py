@@ -339,6 +339,9 @@ class GeminiService:
             logger.debug(f"Tailored resume keys: {list(tailored_resume_data.keys())}")
             logger.debug(f"Tailored resume (formatted):\n{json.dumps(tailored_resume_data, indent=2)}")
 
+            # Ensure AI output preserves required sections; fallback to original where missing
+            tailored_resume_data = self._merge_with_original(resume, tailored_resume_data)
+
             # Parse tailored resume
             tailored_resume = Resume(**tailored_resume_data)
 
@@ -384,7 +387,7 @@ class GeminiService:
             logger.debug(f"Changes ({len(tailor_response.changes)}): {tailor_response.changes}")
             logger.debug(f"Tailored resume name: {tailor_response.tailoredResume.personalInfo.name}")
             logger.debug(f"Tailored resume skills: {tailor_response.tailoredResume.skills}")
-            logger.debug(f"Complete tailored response (JSON):\n{tailor_response.model_dump_json(indent=2)}")
+            logger.info(f"Complete tailored response (JSON):\n{tailor_response.model_dump_json(indent=2)}")
             logger.debug("="*80)
 
             return tailor_response
@@ -462,6 +465,43 @@ class GeminiService:
         # Return capitalized form based on original skills order
         ordered = [skill for skill in resume.skills if skill.lower() in matched]
         return ordered
+
+    def _merge_with_original(self, original: Resume, ai_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge AI output with original resume to ensure required fields are present.
+
+        - Preserve `personalInfo` fields when AI returns nulls
+        - Ensure `experience` and `skills` are non-empty; fallback to originals
+        - Preserve `projects` and `education` if AI drops them entirely
+        """
+        orig = json.loads(original.model_dump_json())
+
+        # Personal info: fill nulls from original
+        if "personalInfo" in ai_data and isinstance(ai_data["personalInfo"], dict):
+            for key, val in orig.get("personalInfo", {}).items():
+                if ai_data["personalInfo"].get(key) is None:
+                    ai_data["personalInfo"][key] = val
+        else:
+            ai_data["personalInfo"] = orig.get("personalInfo", {})
+
+        # Experience: must have at least one item
+        if not ai_data.get("experience"):
+            ai_data["experience"] = orig.get("experience", [])
+
+        # Skills: must have at least one item
+        if not ai_data.get("skills"):
+            ai_data["skills"] = orig.get("skills", [])
+
+        # Education / Projects / Certifications: preserve if AI removed
+        for section in ("education", "projects", "certifications"):
+            if ai_data.get(section) is None:
+                ai_data[section] = orig.get(section, [])
+
+        # createdAt / updatedAt: preserve timestamps if AI set null
+        for ts in ("createdAt", "updatedAt"):
+            if ai_data.get(ts) is None and orig.get(ts) is not None:
+                ai_data[ts] = orig.get(ts)
+
+        return ai_data
 
     def _extract_resume_text(self, resume: Resume) -> str:
         """Extract all text from resume for analysis"""
