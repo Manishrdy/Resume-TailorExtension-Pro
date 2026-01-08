@@ -74,7 +74,13 @@ class GeminiService:
                 duration_ms=duration_ms,
             )
 
-            logger.debug(f"Gemini response preview: {response_text[:200]}...")
+            # DEBUG: Log full response
+            logger.debug("="*80)
+            logger.debug("🔍 GEMINI RAW RESPONSE:")
+            logger.debug(f"Response length: {len(response_text)} characters")
+            logger.debug(f"Response preview: {response_text[:200]}...")
+            logger.debug(f"Full response text:\n{response_text}")
+            logger.debug("="*80)
 
             return response_text
 
@@ -113,6 +119,10 @@ class GeminiService:
             Parsed JSON dict or None if parsing failed
         """
         try:
+            # DEBUG: Log raw response before cleaning
+            logger.debug("🔍 JSON PARSING - Raw response:")
+            logger.debug(f"Raw text (first 500 chars): {response_text[:500]}...")
+            
             # Remove markdown code blocks if present
             cleaned = response_text.strip()
             if cleaned.startswith("```json"):
@@ -123,14 +133,30 @@ class GeminiService:
                 cleaned = cleaned[:-3]
             cleaned = cleaned.strip()
 
+            # DEBUG: Log cleaned response
+            logger.debug("🔍 JSON PARSING - After cleaning:")
+            logger.debug(f"Cleaned text (first 500 chars): {cleaned[:500]}...")
+
             # Parse JSON
             parsed = json.loads(cleaned)
             logger.info("✅ Successfully parsed JSON response from Gemini")
+            
+            # DEBUG: Log parsed structure
+            logger.debug("🔍 JSON PARSING - Parsed structure:")
+            logger.debug(f"Keys in parsed JSON: {list(parsed.keys())}")
+            logger.debug(f"Full parsed JSON:\n{json.dumps(parsed, indent=2)}")
+            
             return parsed
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            logger.error(f"Response text: {response_text[:500]}...")
+            logger.error("="*80)
+            logger.error("❌ JSON PARSING ERROR:")
+            logger.error(f"Error: {e}")
+            logger.error(f"Error position: Line {e.lineno}, Column {e.colno}")
+            logger.error(f"Response text (first 500): {response_text[:500]}...")
+            logger.error(f"Response text (last 500): ...{response_text[-500:]}")
+            logger.error(f"Full response text for debugging:\n{response_text}")
+            logger.error("="*80)
             return None
 
     def extract_keywords(self, job_description: str) -> Optional[Dict[str, Any]]:
@@ -144,14 +170,27 @@ class GeminiService:
             Dict with extracted keywords or None if failed
         """
         logger.info("📝 Extracting keywords from job description")
+        logger.debug("="*80)
+        logger.debug("🔍 KEYWORD EXTRACTION - Input:")
+        logger.debug(f"Job description length: {len(job_description)} characters")
+        logger.debug(f"Job description preview: {job_description[:300]}...")
+        logger.debug("="*80)
 
         prompt = add_json_enforcement(get_keyword_extraction_prompt(job_description))
         response_text = self._make_request(prompt)
 
         if not response_text:
+            logger.error("❌ KEYWORD EXTRACTION - No response from Gemini")
             return None
 
-        return self._parse_json_response(response_text)
+        result = self._parse_json_response(response_text)
+        
+        # DEBUG: Log final result
+        if result:
+            logger.debug("🔍 KEYWORD EXTRACTION - Final result:")
+            logger.debug(f"Result: {json.dumps(result, indent=2)}")
+        
+        return result
 
     def tailor_resume(
         self, resume: Resume, job_description: str
@@ -167,12 +206,23 @@ class GeminiService:
             TailorResponse with optimized resume or None if failed
         """
         logger.info(f"🎯 Starting resume tailoring for: {resume.personalInfo.name}")
+        logger.debug("="*80)
+        logger.debug("🔍 RESUME TAILORING - Input:")
+        logger.debug(f"Resume name: {resume.personalInfo.name}")
+        logger.debug(f"Job description length: {len(job_description)} characters")
+        logger.debug(f"Job description: {job_description[:500]}...")
+        logger.debug("="*80)
 
         # Convert resume to JSON
         resume_json = resume.model_dump_json(indent=2)
+        logger.debug("🔍 RESUME TAILORING - Resume JSON:")
+        logger.debug(f"Resume JSON length: {len(resume_json)} characters")
+        logger.debug(f"Resume JSON preview: {resume_json[:500]}...")
 
         # Generate prompt
         prompt = add_json_enforcement(get_tailoring_prompt(resume_json, job_description))
+        logger.debug("🔍 RESUME TAILORING - Generated prompt:")
+        logger.debug(f"Prompt length: {len(prompt)} characters")
 
         # Make request
         response_text = self._make_request(prompt)
@@ -188,13 +238,30 @@ class GeminiService:
             logger.error("❌ Failed to parse Gemini response")
             return None
 
+        # DEBUG: Log parsed response structure
+        logger.debug("="*80)
+        logger.debug("🔍 RESUME TAILORING - Parsed response structure:")
+        logger.debug(f"Top-level keys: {list(parsed_response.keys())}")
+        for key in parsed_response.keys():
+            if isinstance(parsed_response[key], (list, dict)):
+                logger.debug(f"  {key}: {type(parsed_response[key]).__name__} with {len(parsed_response[key])} items")
+            else:
+                logger.debug(f"  {key}: {type(parsed_response[key]).__name__}")
+        logger.debug("="*80)
+
         # Validate and construct TailorResponse
         try:
             # Extract tailored resume
             tailored_resume_data = parsed_response.get("tailoredResume")
             if not tailored_resume_data:
                 logger.error("❌ Missing 'tailoredResume' in response")
+                logger.error(f"Available keys: {list(parsed_response.keys())}")
                 return None
+            
+            # DEBUG: Log tailored resume data
+            logger.debug("🔍 RESUME TAILORING - Tailored resume data:")
+            logger.debug(f"Tailored resume keys: {list(tailored_resume_data.keys())}")
+            logger.debug(f"Tailored resume (formatted):\n{json.dumps(tailored_resume_data, indent=2)}")
 
             # Parse tailored resume
             tailored_resume = Resume(**tailored_resume_data)
@@ -225,11 +292,29 @@ class GeminiService:
             logger.info(
                 f"   Missing: {len(tailor_response.missingKeywords)} keywords"
             )
+            
+            # DEBUG: Log final tailor response
+            logger.debug("="*80)
+            logger.debug("🔍 RESUME TAILORING - FINAL RESPONSE:")
+            logger.debug(f"ATS Score: {tailor_response.atsScore}")
+            logger.debug(f"Matched keywords ({len(tailor_response.matchedKeywords)}): {tailor_response.matchedKeywords}")
+            logger.debug(f"Missing keywords ({len(tailor_response.missingKeywords)}): {tailor_response.missingKeywords}")
+            logger.debug(f"Suggestions ({len(tailor_response.suggestions)}): {tailor_response.suggestions}")
+            logger.debug(f"Changes ({len(tailor_response.changes)}): {tailor_response.changes}")
+            logger.debug(f"Tailored resume name: {tailor_response.tailoredResume.personalInfo.name}")
+            logger.debug(f"Tailored resume skills: {tailor_response.tailoredResume.skills}")
+            logger.debug(f"Complete tailored response (JSON):\n{tailor_response.model_dump_json(indent=2)}")
+            logger.debug("="*80)
 
             return tailor_response
 
         except Exception as e:
-            logger.error(f"❌ Failed to construct TailorResponse: {e}")
+            logger.error("="*80)
+            logger.error("❌ RESUME TAILORING - Failed to construct TailorResponse")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"Error message: {str(e)}")
+            logger.error(f"Parsed response that caused error:\n{json.dumps(parsed_response, indent=2)}")
+            logger.error("="*80)
             log_ai_error(e, {"parsed_response": parsed_response})
             return None
 

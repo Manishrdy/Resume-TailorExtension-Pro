@@ -73,7 +73,7 @@ const elements = {
     clearDraftBtn: document.getElementById('clear-draft-btn'),
     resumeForm: document.getElementById('resume-form'),
     cancelBtn: document.getElementById('cancel-btn'),
-    clearDraftBtn: document.getElementById('clear-draft-btn'),
+    exportDraftJsonBtn: document.getElementById('export-draft-json-btn'),
 
     // Form containers
     experienceContainer: document.getElementById('experience-container'),
@@ -131,6 +131,9 @@ function setupEventListeners() {
     elements.modalClose.addEventListener('click', closeModal);
     elements.cancelBtn.addEventListener('click', closeModal);
     elements.clearDraftBtn.addEventListener('click', handleClearDraft);
+    if (elements.exportDraftJsonBtn) {
+        elements.exportDraftJsonBtn.addEventListener('click', handleExportDraftJson);
+    }
     elements.resumeForm.addEventListener('submit', handleSaveResume);
 
     // Autosave resume form draft (persists even when popup closes)
@@ -142,7 +145,7 @@ function setupEventListeners() {
         }
     });
 
-    
+
 
     // Close when clicking outside the editor card
     elements.modal.addEventListener('click', (e) => {
@@ -157,7 +160,7 @@ function setupEventListeners() {
             closeModal();
         }
     });
-// Dynamic form buttons
+    // Dynamic form buttons
     elements.addExperience.addEventListener('click', () => addExperienceEntry());
     elements.addEducation.addEventListener('click', () => addEducationEntry());
     elements.addProject.addEventListener('click', () => addProjectEntry());
@@ -175,14 +178,285 @@ function switchTab(tabName) {
     });
 }
 
+
+
+// -------- Normalization helpers (must match backend resume.py schema) --------
+function _asStr(v) {
+    return (v === undefined || v === null) ? '' : String(v);
+}
+function _trim(v) {
+    return _asStr(v).trim();
+}
+function _nullIfEmpty(v) {
+    const s = _trim(v);
+    return s ? s : null;
+}
+function _dedupe(arr) {
+    const out = [];
+    const seen = new Set();
+    for (const item of arr) {
+        const s = _trim(item);
+        if (!s) continue;
+        const key = s.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(s);
+    }
+    return out;
+}
+
+// Convert free-form bullet text to a clean list of bullets.
+// - Handles: one bullet per line, inline "•" bullets, "-" "*" "1." bullets
+// - Merges wrapped lines (e.g., line-breaks inserted mid-sentence)
+function parseBullets(raw) {
+    if (raw === undefined || raw === null) return [];
+    const text = Array.isArray(raw) ? raw.join('\n') : _asStr(raw);
+    const normalized = text
+        .replace(/\r\n/g, '\n')
+        .replace(/\u2022/g, '•')   // unicode bullet → •
+        .replace(/\t/g, ' ')
+        .trim();
+
+    if (!normalized) return [];
+
+    // Expand inline bullets: "Intro.. • Bullet A.. • Bullet B"
+    const baseLines = normalized.split('\n').map(l => l.trim()).filter(Boolean);
+    const lines = [];
+    for (const line of baseLines) {
+        if (line.includes('•')) {
+            const parts = line.split('•');
+            if (parts[0] && parts[0].trim()) lines.push(parts[0].trim());
+            for (const p of parts.slice(1)) {
+                const t = p.trim();
+                if (t) lines.push('• ' + t);
+            }
+        } else {
+            lines.push(line);
+        }
+    }
+
+    const bullets = [];
+    const bulletStart = /^\s*(?:[•\-\*\u2013\u2014]|\d+[\.\)])\s+/;
+
+    for (const line0 of lines) {
+        const line = line0.trim();
+        const isBullet = bulletStart.test(line);
+
+        if (isBullet) {
+            const cleaned = line.replace(bulletStart, '').trim();
+            if (cleaned) bullets.push(cleaned);
+            continue;
+        }
+
+        if (!bullets.length) {
+            bullets.push(line);
+            continue;
+        }
+
+        // Heuristics to merge wrapped lines:
+        // - starts with lowercase (likely continuation)
+        // - very short fragments (likely line-wrap artifacts) if prev doesn't end a sentence
+        const prev = bullets[bullets.length - 1];
+        const prevEndsSentence = /[.!?;:]$/.test(prev.trim());
+        const startsLower = /^[a-z]/.test(line);
+        const shortFrag = line.length < 20;
+
+        if (startsLower || (shortFrag && !prevEndsSentence)) {
+            bullets[bullets.length - 1] = (prev + ' ' + line).replace(/\s+/g, ' ').trim();
+        } else {
+            bullets.push(line);
+        }
+    }
+
+    return bullets
+        .map(b => b.replace(/^[•\-\*]\s*/, '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+}
+
+function normalizeSkills(v) {
+    if (v === undefined || v === null) return [];
+
+    // Legacy: object map (category -> list or comma string)
+    if (typeof v === 'object' && !Array.isArray(v)) {
+        const out = [];
+        for (const val of Object.values(v)) {
+            if (Array.isArray(val)) out.push(...val);
+            else out.push(..._asStr(val).split(/[,;\n]/));
+        }
+        return _dedupe(out);
+    }
+
+    // Array forms:
+    if (Array.isArray(v)) {
+        // Legacy: [{category, skills:"a,b"}]
+        const out = [];
+        if (v.every(x => x && typeof x === 'object' && !Array.isArray(x))) {
+            for (const item of v) {
+                const raw = item.skills ?? item.items ?? '';
+                out.push(..._asStr(raw).split(/[,;\n]/));
+            }
+            return _dedupe(out);
+        }
+        return _dedupe(v);
+    }
+
+    // String form
+    if (typeof v === 'string') {
+        return _dedupe(v.split(/[,;\n]/));
+    }
+
+    return [];
+}
+
+function parseProjectText(raw) {
+    const text = Array.isArray(raw) ? raw.join('\n') : _asStr(raw);
+    const trimmed = text.trim();
+    if (!trimmed) return { description: '', highlights: [] };
+
+    if (trimmed.includes('•')) {
+        const idx = trimmed.indexOf('•');
+        const preface = trimmed.slice(0, idx).replace(/\s+/g, ' ').trim();
+        const highlights = parseBullets(trimmed.slice(idx));
+        const description = (preface || (highlights.length ? highlights.join(' ') : trimmed))
+            .replace(/\s+/g, ' ')
+            .trim();
+        return { description, highlights };
+    }
+
+    const highlights = parseBullets(trimmed);
+    const description = (highlights.length ? highlights.join(' ') : trimmed).replace(/\s+/g, ' ').trim();
+    return { description, highlights };
+}
+
+// Build a Resume JSON object that STRICTLY matches backend resume.py schema.
+function normalizeResume(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+
+    const now = new Date().toISOString();
+    const id = _trim(raw.id) || newResumeId();
+    const piRaw = raw.personalInfo || raw.personal_info || {};
+
+    const website = _nullIfEmpty(piRaw.website ?? piRaw.portfolio ?? raw.website ?? raw.portfolio);
+
+    const personalInfo = {
+        name: _trim(piRaw.name),
+        email: _trim(piRaw.email),
+        phone: _nullIfEmpty(piRaw.phone),
+        location: _nullIfEmpty(piRaw.location),
+        linkedin: _nullIfEmpty(piRaw.linkedin),
+        github: _nullIfEmpty(piRaw.github),
+        website: website,
+        summary: _nullIfEmpty(piRaw.summary)
+    };
+
+    const education = Array.isArray(raw.education) ? raw.education : [];
+    const normalizedEducation = education.map((e) => {
+        const achievements = Array.isArray(e.achievements)
+            ? e.achievements
+            : (Array.isArray(e.coursework) ? e.coursework : parseBullets(e.coursework));
+
+        return {
+            institution: _trim(e.institution),
+            degree: _trim(e.degree),
+            field: _nullIfEmpty(e.field),
+            startDate: _trim(e.startDate),
+            endDate: _trim(e.endDate),
+            gpa: _nullIfEmpty(e.gpa),
+            achievements: achievements.map(a => _trim(a)).filter(Boolean)
+        };
+    }).filter(e => e.institution && e.degree);
+
+    const experience = Array.isArray(raw.experience) ? raw.experience : [];
+    const normalizedExperience = experience.map((x) => {
+        const company = _trim(x.company ?? x.employer);
+        const position = _trim(x.position ?? x.role);
+        const description = parseBullets(x.description);
+        return {
+            company,
+            position,
+            location: _nullIfEmpty(x.location),
+            startDate: _trim(x.startDate),
+            endDate: _trim(x.endDate),
+            description
+        };
+    }).filter(x => x.company && x.position && Array.isArray(x.description) && x.description.length > 0);
+
+    const projects = Array.isArray(raw.projects) ? raw.projects : [];
+    const normalizedProjects = projects.map((p) => {
+        const { description, highlights } = parseProjectText(p.description ?? p.highlights ?? '');
+        const finalDesc = (description || '').slice(0, 1000);
+        return {
+            name: _trim(p.name),
+            description: finalDesc,
+            technologies: Array.isArray(p.technologies) ? p.technologies.map(t => _trim(t)).filter(Boolean) : [],
+            link: _nullIfEmpty(p.link ?? p.github),
+            highlights: Array.isArray(p.highlights) && p.highlights.length
+                ? p.highlights.map(h => _trim(h)).filter(Boolean)
+                : highlights,
+            startDate: _nullIfEmpty(p.startDate),
+            endDate: _nullIfEmpty(p.endDate)
+        };
+    }).filter(p => p.name && p.description);
+
+    const skills = normalizeSkills(raw.skills);
+    const certifications = Array.isArray(raw.certifications) ? raw.certifications : [];
+
+    const name = _trim(raw.name ?? raw.resumeName) || personalInfo.name || 'Untitled Resume';
+
+    return {
+        id,
+        name,
+        personalInfo,
+        education: normalizedEducation,
+        experience: normalizedExperience,
+        skills: skills.length ? skills : ['General Skills'],
+        projects: normalizedProjects,
+        certifications,
+        createdAt: raw.createdAt ?? now,
+        updatedAt: raw.updatedAt ?? now
+    };
+}
+
+function isLegacyResume(r) {
+    if (!r || typeof r !== 'object') return false;
+    if (r.personalInfo && typeof r.personalInfo === 'object' && 'portfolio' in r.personalInfo) return true;
+    if (Array.isArray(r.experience) && r.experience.some(x => ('employer' in x) || ('role' in x))) return true;
+    if (Array.isArray(r.projects) && r.projects.some(p => ('github' in p) || Array.isArray(p.description))) return true;
+    if (r.skills && !Array.isArray(r.skills)) return true;
+    if (Array.isArray(r.education) && r.education.some(e => 'coursework' in e)) return true;
+    return false;
+}
+// ---------------------------------------------------------------------------
+
 // Load Resumes
 async function loadResumes() {
-    const resumes = await storage.getResumes();
+    const resumesRaw = await storage.getResumes();
     const savedProfileId = await storage.getCurrentProfile();
+
+    // Normalize + (optionally) migrate any legacy resumes in storage
+    const resumes = {};
+    for (const [id, r] of Object.entries(resumesRaw || {})) {
+        const normalized = normalizeResume(r) || r;
+        resumes[id] = normalized;
+
+        if (isLegacyResume(r)) {
+            try {
+                await storage.saveResume(normalized);
+            } catch (err) {
+                console.warn('Resume migration failed:', err);
+            }
+        }
+    }
 
     elements.resumeSelect.innerHTML = '<option value="">Select resume...</option>';
 
-    Object.values(resumes).forEach(resume => {
+    const orderedResumes = Object.values(resumes).sort((a, b) => {
+        const ta = Date.parse(a.updatedAt || a.createdAt || 0) || 0;
+        const tb = Date.parse(b.updatedAt || b.createdAt || 0) || 0;
+        return tb - ta;
+    });
+
+    orderedResumes.forEach(resume => {
         const option = document.createElement('option');
         option.value = resume.id;
         option.textContent = resume.name;
@@ -207,13 +481,24 @@ async function handleResumeSelect(e) {
         currentResume = null;
         currentProfileId = null;
         elements.resumePreview.classList.add('hidden');
+        await storage.setCurrentProfile(null);
         updateCurrentProfileDisplay();
         return;
     }
 
     const resumes = await storage.getResumes();
-    currentResume = resumes[resumeId];
+    const raw = resumes[resumeId];
+    currentResume = normalizeResume(raw) || raw;
     currentProfileId = resumeId;
+
+    // migrate legacy record for future operations
+    if (raw && isLegacyResume(raw)) {
+        try {
+            await storage.saveResume(currentResume);
+        } catch (err) {
+            console.warn('Resume migration failed:', err);
+        }
+    }
 
     await storage.setCurrentProfile(resumeId);
     displayResumePreview(currentResume);
@@ -346,6 +631,11 @@ function hasDraftContent(state) {
 
 function collectResumeFormState() {
     const get = (name) => (document.querySelector(`[name="${name}"]`)?.value || '').trim();
+    const getEither = (a, b) => {
+        const va = (document.querySelector(`[name="${a}"]`)?.value || '').trim();
+        if (va) return va;
+        return (document.querySelector(`[name="${b}"]`)?.value || '').trim();
+    };
 
     const state = {
         resumeName: get('resumeName'),
@@ -355,7 +645,7 @@ function collectResumeFormState() {
             phone: get('phone'),
             location: get('location'),
             linkedin: get('linkedin'),
-            portfolio: get('portfolio'),
+            website: getEither('website', 'portfolio'),
             github: get('github'),
             summary: (document.querySelector('[name="summary"]')?.value || '').trim()
         },
@@ -373,7 +663,7 @@ function collectResumeFormState() {
         const startDate = (item.querySelector('[name="exp-start[]"]')?.value || '').trim();
         const endDate = (item.querySelector('[name="exp-end[]"]')?.value || '').trim();
         const descRaw = (item.querySelector('[name="exp-desc[]"]')?.value || '').trim();
-        const description = descRaw ? descRaw.split('\n').map(l => l.trim()).filter(Boolean) : [];
+        const description = parseBullets(descRaw);
         state.experience.push({ employer, role, startDate, endDate, description });
     }
 
@@ -385,8 +675,10 @@ function collectResumeFormState() {
         const startDate = (item.querySelector('[name="edu-start[]"]')?.value || '').trim();
         const endDate = (item.querySelector('[name="edu-end[]"]')?.value || '').trim();
         const cwRaw = (item.querySelector('[name="edu-coursework[]"]')?.value || '').trim();
-        const coursework = cwRaw ? cwRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
-        state.education.push({ institution, degree, startDate, endDate, coursework });
+        const achievements = cwRaw
+            ? cwRaw.split(/[,;\n]/).map(c => c.trim()).filter(Boolean)
+            : [];
+        state.education.push({ institution, degree, startDate, endDate, achievements });
     }
 
     // Projects
@@ -397,7 +689,7 @@ function collectResumeFormState() {
         const startDate = (item.querySelector('[name="proj-start[]"]')?.value || '').trim();
         const endDate = (item.querySelector('[name="proj-end[]"]')?.value || '').trim();
         const descRaw = (item.querySelector('[name="proj-desc[]"]')?.value || '').trim();
-        const description = descRaw ? descRaw.split('\n').map(l => l.trim()).filter(Boolean) : [];
+        const description = parseBullets(descRaw);
         state.projects.push({ name, github, startDate, endDate, description });
     }
 
@@ -415,18 +707,29 @@ function collectResumeFormState() {
 function applyResumeFormState(state) {
     if (!state) return;
 
+    const setVal = (name, value) => {
+        const el = document.querySelector(`[name="${name}"]`);
+        if (el) el.value = value || '';
+    };
+    const setEither = (a, b, value) => {
+        const elA = document.querySelector(`[name="${a}"]`);
+        if (elA) { elA.value = value || ''; return; }
+        const elB = document.querySelector(`[name="${b}"]`);
+        if (elB) elB.value = value || '';
+    };
+
     // Basic fields
-    document.querySelector('[name="resumeName"]').value = state.resumeName || '';
+    setVal('resumeName', state.resumeName || '');
 
     const pi = state.personalInfo || {};
-    document.querySelector('[name="name"]').value = pi.name || '';
-    document.querySelector('[name="email"]').value = pi.email || '';
-    document.querySelector('[name="phone"]').value = pi.phone || '';
-    document.querySelector('[name="location"]').value = pi.location || '';
-    document.querySelector('[name="linkedin"]').value = pi.linkedin || '';
-    document.querySelector('[name="portfolio"]').value = pi.portfolio || '';
-    document.querySelector('[name="github"]').value = pi.github || '';
-    document.querySelector('[name="summary"]').value = pi.summary || '';
+    setVal('name', pi.name || '');
+    setVal('email', pi.email || '');
+    setVal('phone', pi.phone || '');
+    setVal('location', pi.location || '');
+    setVal('linkedin', pi.linkedin || '');
+    setEither('website', 'portfolio', pi.website || pi.portfolio || '');
+    setVal('github', pi.github || '');
+    setVal('summary', pi.summary || '');
 
     // Dynamic sections
     clearDynamicContainers();
@@ -444,7 +747,7 @@ function applyResumeFormState(state) {
         degree: edu.degree || '',
         startDate: edu.startDate || '',
         endDate: edu.endDate || '',
-        coursework: Array.isArray(edu.coursework) ? edu.coursework : []
+        achievements: Array.isArray(edu.achievements) ? edu.achievements : (Array.isArray(edu.coursework) ? edu.coursework : [])
     }));
 
     (state.projects || []).forEach(proj => addProjectEntry({
@@ -492,31 +795,73 @@ function clearDynamicContainers() {
 
 // Populate Form (for editing)
 function populateForm(resume) {
-    // Resume name
-    document.querySelector('[name="resumeName"]').value = resume.name;
+    const setVal = (name, value) => {
+        const el = document.querySelector(`[name="${name}"]`);
+        if (el) el.value = value || '';
+    };
+    const setEither = (a, b, value) => {
+        const elA = document.querySelector(`[name="${a}"]`);
+        if (elA) { elA.value = value || ''; return; }
+        const elB = document.querySelector(`[name="${b}"]`);
+        if (elB) elB.value = value || '';
+    };
 
-    // Personal info
-    document.querySelector('[name="name"]').value = resume.personalInfo.name || '';
-    document.querySelector('[name="email"]').value = resume.personalInfo.email || '';
-    document.querySelector('[name="phone"]').value = resume.personalInfo.phone || '';
-    document.querySelector('[name="location"]').value = resume.personalInfo.location || '';
-    document.querySelector('[name="linkedin"]').value = resume.personalInfo.linkedin || '';
-    document.querySelector('[name="portfolio"]').value = resume.personalInfo.portfolio || '';
-    document.querySelector('[name="github"]').value = resume.personalInfo.github || '';
-    document.querySelector('[name="summary"]').value = resume.personalInfo.summary || '';
+    // Resume name
+    setVal('resumeName', resume.name || '');
+
+    const pi = resume.personalInfo || {};
+    setVal('name', pi.name || '');
+    setVal('email', pi.email || '');
+    setVal('phone', pi.phone || '');
+    setVal('location', pi.location || '');
+    setVal('linkedin', pi.linkedin || '');
+    setEither('website', 'portfolio', pi.website || pi.portfolio || '');
+    setVal('github', pi.github || '');
+    setVal('summary', pi.summary || '');
+
+    // Dynamic sections
+    clearDynamicContainers();
 
     // Experience
-    clearDynamicContainers();
-    resume.experience?.forEach(exp => addExperienceEntry(exp));
+    (resume.experience || []).forEach(exp => addExperienceEntry({
+        employer: exp.company || exp.employer || '',
+        role: exp.position || exp.role || '',
+        startDate: exp.startDate || '',
+        endDate: exp.endDate || '',
+        description: Array.isArray(exp.description) ? exp.description : parseBullets(exp.description)
+    }));
 
     // Education
-    resume.education?.forEach(edu => addEducationEntry(edu));
+    (resume.education || []).forEach(edu => addEducationEntry({
+        institution: edu.institution || '',
+        degree: edu.degree || '',
+        startDate: edu.startDate || '',
+        endDate: edu.endDate || '',
+        achievements: Array.isArray(edu.achievements) ? edu.achievements : (Array.isArray(edu.coursework) ? edu.coursework : [])
+    }));
 
     // Projects
-    resume.projects?.forEach(proj => addProjectEntry(proj));
+    (resume.projects || []).forEach(proj => {
+        const highlights = Array.isArray(proj.highlights) && proj.highlights.length
+            ? proj.highlights
+            : parseBullets(proj.description);
+        addProjectEntry({
+            name: proj.name || '',
+            github: proj.link || proj.github || '',
+            startDate: proj.startDate || '',
+            endDate: proj.endDate || '',
+            description: highlights
+        });
+    });
 
     // Skills
-    if (resume.skills && typeof resume.skills === 'object') {
+    if (Array.isArray(resume.skills)) {
+        addSkillEntry({
+            category: 'Skills',
+            skills: resume.skills.join(', ')
+        });
+    } else if (resume.skills && typeof resume.skills === 'object') {
+        // legacy object map
         Object.entries(resume.skills).forEach(([category, skills]) => {
             addSkillEntry({ category, skills: Array.isArray(skills) ? skills.join(', ') : skills });
         });
@@ -527,15 +872,20 @@ function populateForm(resume) {
 function addExperienceEntry(data = null) {
     const div = document.createElement('div');
     div.className = 'entry-item';
+
+    const employerVal = data?.employer || data?.company || '';
+    const roleVal = data?.role || data?.position || '';
+    const descLines = Array.isArray(data?.description) ? data.description : parseBullets(data?.description);
+
     div.innerHTML = `
         <button type="button" class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
         <div class="form-group">
             <label>Employer</label>
-            <input type="text" name="exp-employer[]" class="form-control" placeholder="Company Name" value="${data?.employer || ''}">
+            <input type="text" name="exp-employer[]" class="form-control" placeholder="Company Name" value="${employerVal}">
         </div>
         <div class="form-group">
             <label>Role</label>
-            <input type="text" name="exp-role[]" class="form-control" placeholder="Job Title" value="${data?.role || ''}">
+            <input type="text" name="exp-role[]" class="form-control" placeholder="Job Title" value="${roleVal}">
         </div>
         <div class="form-row">
             <div class="form-group">
@@ -550,7 +900,7 @@ function addExperienceEntry(data = null) {
         <div class="form-group">
             <label>Description (one bullet per line)</label>
             <textarea name="exp-desc[]" class="form-control" rows="4" placeholder="• Built secure backend microservices...
-- Designed scalable data ingestion...">${data?.description ? data.description.join('\n') : ''}</textarea>
+- Designed scalable data ingestion...">${descLines.join('\\n')}</textarea>
         </div>
     `;
     elements.experienceContainer.appendChild(div);
@@ -560,6 +910,11 @@ function addExperienceEntry(data = null) {
 function addEducationEntry(data = null) {
     const div = document.createElement('div');
     div.className = 'entry-item';
+
+    const achievements = Array.isArray(data?.achievements)
+        ? data.achievements
+        : (Array.isArray(data?.coursework) ? data.coursework : []);
+
     div.innerHTML = `
         <button type="button" class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
         <div class="form-group">
@@ -581,8 +936,10 @@ function addEducationEntry(data = null) {
             </div>
         </div>
         <div class="form-group">
-            <label>Coursework (comma-separated)</label>
-            <textarea name="edu-coursework[]" class="form-control" rows="2" placeholder="Artificial Intelligence, Theory of Algorithms, Modern Computer Architecture">${data?.coursework ? data.coursework.join(', ') : ''}</textarea>
+            <label>Achievements / Coursework (one per line)</label>
+            <textarea name="edu-coursework[]" class="form-control" rows="3" placeholder="Artificial Intelligence
+Theory of Algorithms
+Modern Computer Architecture">${achievements.join('\\n')}</textarea>
         </div>
     `;
     elements.educationContainer.appendChild(div);
@@ -592,6 +949,10 @@ function addEducationEntry(data = null) {
 function addProjectEntry(data = null) {
     const div = document.createElement('div');
     div.className = 'entry-item';
+
+    const linkVal = data?.github || data?.link || '';
+    const descLines = Array.isArray(data?.description) ? data.description : parseBullets(data?.description);
+
     div.innerHTML = `
         <button type="button" class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
         <div class="form-group">
@@ -599,8 +960,8 @@ function addProjectEntry(data = null) {
             <input type="text" name="proj-name[]" class="form-control" placeholder="Project Title" value="${data?.name || ''}">
         </div>
         <div class="form-group">
-            <label>GitHub Link</label>
-            <input type="url" name="proj-github[]" class="form-control" placeholder="https://github.com/username/repo" value="${data?.github || ''}">
+            <label>Link (GitHub / Demo)</label>
+            <input type="url" name="proj-github[]" class="form-control" placeholder="https://github.com/username/repo" value="${linkVal}">
         </div>
         <div class="form-row">
             <div class="form-group">
@@ -613,9 +974,9 @@ function addProjectEntry(data = null) {
             </div>
         </div>
         <div class="form-group">
-            <label>Description (one bullet per line)</label>
-            <textarea name="proj-desc[]" class="form-control" rows="3" placeholder="• Designed an end-to-end distributed backend...
-- Implemented a queue-driven pipeline...">${data?.description ? data.description.join('\n') : ''}</textarea>
+            <label>Highlights (one bullet per line)</label>
+            <textarea name="proj-desc[]" class="form-control" rows="4" placeholder="• Designed an end-to-end distributed backend...
+- Implemented a queue-driven pipeline...">${descLines.join('\\n')}</textarea>
         </div>
     `;
     elements.projectsContainer.appendChild(div);
@@ -640,87 +1001,150 @@ function addSkillEntry(data = null) {
 }
 
 // Handle Save Resume
+// Build a normalized resume object from the editor form.
+// Used for both Save and Export Draft.
+function newResumeId() {
+    return (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        : `id_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildResumeFromFormData(formData) {
+    const now = new Date().toISOString();
+    const createdAt = (editingResumeSnapshot && editingResumeSnapshot.createdAt) ? editingResumeSnapshot.createdAt : now;
+
+    const resumeName = (formData.get('resumeName') || '').trim();
+    const personalName = (formData.get('name') || '').trim();
+
+    // Build resume object matching backend schema EXACTLY
+    const resume = {
+        id: editingResumeId || newResumeId(),
+        name: resumeName || personalName || 'Untitled Resume',
+        createdAt,
+        updatedAt: now,
+        personalInfo: {
+            name: formData.get('name') || '',
+            email: formData.get('email') || '',
+            phone: formData.get('phone') || '',
+            location: formData.get('location') || '',
+            linkedin: formData.get('linkedin') || '',
+            github: formData.get('github') || '',
+            website: formData.get('portfolio') || '',  // Maps portfolio → website
+            summary: formData.get('summary') || ''
+        },
+        experience: [],
+        education: [],
+        projects: [],
+        skills: [],
+        certifications: []
+    };
+
+    // Experience - Backend expects: company, position, location, description (required)
+    const expEmployers = formData.getAll('exp-employer[]');
+    expEmployers.forEach((employer, i) => {
+        const company = (employer || '').trim();
+        const position = (formData.getAll('exp-role[]')[i] || '').trim();
+
+        // Only add if BOTH company AND position are non-empty (backend validation)
+        if (company && position) {
+            const desc = formData.getAll('exp-desc[]')[i] || '';
+            const description = desc.split('\n')
+                .map(line => line.trim())
+                .filter(line => line)
+                .map(line => line.replace(/^[•\-\*]\s*/, ''));
+
+            // Backend requires min_items=1 for description
+            if (description.length > 0) {
+                resume.experience.push({
+                    company: company,
+                    position: position,
+                    location: '',  // Optional but included
+                    startDate: formData.getAll('exp-start[]')[i] || '',
+                    endDate: formData.getAll('exp-end[]')[i] || '',
+                    description: description
+                });
+            }
+        }
+    });
+
+    // Education - Backend expects: institution, degree, startDate, endDate (required)
+    const eduInstitutions = formData.getAll('edu-institution[]');
+    eduInstitutions.forEach((institution, i) => {
+        const inst = (institution || '').trim();
+        const deg = (formData.getAll('edu-degree[]')[i] || '').trim();
+
+        if (inst && deg) {
+            const coursework = (formData.getAll('edu-coursework[]')[i] || '')
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s);
+
+            resume.education.push({
+                institution: inst,
+                degree: deg,
+                field: '',  // Optional
+                startDate: formData.getAll('edu-start[]')[i] || '',
+                endDate: formData.getAll('edu-end[]')[i] || '',
+                gpa: '',  // Optional
+                achievements: coursework  // Backend accepts "coursework" via alias
+            });
+        }
+    });
+
+    // Projects - Backend expects: name, description (string, min 1 char)
+    const projNames = formData.getAll('proj-name[]');
+    projNames.forEach((name, i) => {
+        const projName = (name || '').trim();
+
+        if (projName) {
+            const desc = formData.getAll('proj-desc[]')[i] || '';
+            const descLines = desc.split('\n')
+                .map(line => line.trim())
+                .filter(line => line)
+                .map(line => line.replace(/^[•\-\*]\s*/, ''));
+
+            // Backend coerces array → string, but let's send string directly
+            const description = descLines.join(' ') || 'Project description';
+
+            resume.projects.push({
+                name: projName,
+                description: description,  // String (backend validates min_length=1)
+                technologies: [],  // Optional
+                link: formData.getAll('proj-github[]')[i] || null,  // Backend accepts "github" alias
+                highlights: descLines,  // Optional
+                startDate: formData.getAll('proj-start[]')[i] || null,
+                endDate: formData.getAll('proj-end[]')[i] || null
+            });
+        }
+    });
+
+    // Skills - Backend expects: List[str] with min 1 item
+    // Backend coerces dict/object → List[str] automatically
+    const skillCategories = formData.getAll('skill-category[]');
+    const allSkills = [];
+
+    skillCategories.forEach((category, i) => {
+        if ((category || '').trim()) {
+            const items = formData.getAll('skill-items[]')[i] || '';
+            items.split(',')
+                .map(s => s.trim())
+                .filter(s => s)
+                .forEach(skill => allSkills.push(skill));
+        }
+    });
+
+    // Backend validates: at least 1 skill required
+    resume.skills = allSkills.length > 0 ? allSkills : ['General Skills'];
+
+    return resume;
+}
+
 async function handleSaveResume(e) {
     e.preventDefault();
 
     const formData = new FormData(e.target);
 
-    // Build resume object
-    const resume = {
-        // Never overwrite the currently-selected resume when creating a new one.
-        // Only overwrite when we're explicitly in edit mode.
-        id: editingResumeId || crypto.randomUUID(),
-        name: formData.get('resumeName'),
-        personalInfo: {
-            name: formData.get('name'),
-            email: formData.get('email'),
-            phone: formData.get('phone') || '',
-            location: formData.get('location') || '',
-            linkedin: formData.get('linkedin') || '',
-            portfolio: formData.get('portfolio') || '',
-            github: formData.get('github') || '',
-            summary: formData.get('summary')
-        },
-        experience: [],
-        education: [],
-        projects: [],
-        skills: {},
-        certifications: []
-    };
-
-    // Experience
-    const expEmployers = formData.getAll('exp-employer[]');
-    expEmployers.forEach((employer, i) => {
-        if (employer.trim()) {
-            const desc = formData.getAll('exp-desc[]')[i];
-            resume.experience.push({
-                employer: employer,
-                role: formData.getAll('exp-role[]')[i],
-                startDate: formData.getAll('exp-start[]')[i],
-                endDate: formData.getAll('exp-end[]')[i],
-                description: desc.split('\n').filter(line => line.trim()).map(line => line.replace(/^[•\-\*]\s*/, ''))
-            });
-        }
-    });
-
-    // Education
-    const eduInstitutions = formData.getAll('edu-institution[]');
-    eduInstitutions.forEach((institution, i) => {
-        if (institution.trim()) {
-            const coursework = formData.getAll('edu-coursework[]')[i];
-            resume.education.push({
-                institution: institution,
-                degree: formData.getAll('edu-degree[]')[i],
-                startDate: formData.getAll('edu-start[]')[i],
-                endDate: formData.getAll('edu-end[]')[i],
-                coursework: coursework ? coursework.split(',').map(c => c.trim()).filter(c => c) : []
-            });
-        }
-    });
-
-    // Projects
-    const projNames = formData.getAll('proj-name[]');
-    projNames.forEach((name, i) => {
-        if (name.trim()) {
-            const desc = formData.getAll('proj-desc[]')[i];
-            resume.projects.push({
-                name: name,
-                github: formData.getAll('proj-github[]')[i],
-                startDate: formData.getAll('proj-start[]')[i],
-                endDate: formData.getAll('proj-end[]')[i],
-                description: desc.split('\n').filter(line => line.trim()).map(line => line.replace(/^[•\-\*]\s*/, ''))
-            });
-        }
-    });
-
-    // Skills
-    const skillCategories = formData.getAll('skill-category[]');
-    skillCategories.forEach((category, i) => {
-        if (category.trim()) {
-            const items = formData.getAll('skill-items[]')[i];
-            resume.skills[category] = items.split(',').map(s => s.trim()).filter(s => s);
-        }
-    });
+    const resume = buildResumeFromFormData(formData);
 
     // Save
     await storage.saveResume(resume);
@@ -751,6 +1175,23 @@ async function handleDeleteResume() {
 }
 
 // Handle Export JSON
+async function handleExportDraftJson() {
+    try {
+        const state = collectResumeFormState();
+        if (!hasDraftContent(state)) {
+            showError('Nothing to export yet');
+            return;
+        }
+
+        const resume = buildResumeFromFormData(new FormData(elements.resumeForm));
+        await storage.exportToJSON(resume);
+        showSuccess('Draft exported!');
+    } catch (err) {
+        console.error('Export draft failed:', err);
+        showError(err?.message || 'Could not export draft');
+    }
+}
+
 async function handleExportJson() {
     if (!currentResume) return;
     await storage.exportToJSON(currentResume);
@@ -880,6 +1321,10 @@ async function handleTailor() {
         return;
     }
 
+    console.log('=== DEBUG: Current Resume Structure ===');
+    console.log(JSON.stringify(currentResume, null, 2));
+    console.log('=== END DEBUG ===');
+
     try {
         // Show loading
         elements.loading.classList.remove('hidden');
@@ -889,6 +1334,9 @@ async function handleTailor() {
 
         // Call API
         const result = await api.tailorResume(currentResume, jobDesc);
+        console.log('=== DEBUG: Tailoring Result ===');
+        console.log(JSON.stringify(result, null, 2));
+        console.log('=== END DEBUG ===');
 
         // Store tailored resume
         tailoredResume = result.tailoredResume;

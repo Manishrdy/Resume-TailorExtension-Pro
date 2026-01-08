@@ -3,9 +3,13 @@ Pydantic models for Resume data structure
 Provides validation and type safety for all resume-related data
 """
 
-from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional
+from __future__ import annotations
+
+import re
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 
 class PersonalInfo(BaseModel):
@@ -17,7 +21,13 @@ class PersonalInfo(BaseModel):
     location: Optional[str] = Field(None, max_length=100)
     linkedin: Optional[str] = None
     github: Optional[str] = None
-    website: Optional[str] = None
+
+    # Accept legacy "portfolio" key from older popup.js exports.
+    website: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("website", "portfolio"),
+    )
+
     summary: Optional[str] = Field(None, max_length=2000)  # Increased for AI-enhanced summaries
 
 
@@ -30,14 +40,31 @@ class Education(BaseModel):
     startDate: str  # Format: "YYYY-MM" or "YYYY"
     endDate: str  # Format: "YYYY-MM" or "YYYY" or "Present"
     gpa: Optional[str] = None
-    achievements: List[str] = Field(default_factory=list)
+
+    # Accept legacy "coursework" from older exports.
+    achievements: List[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("achievements", "coursework"),
+    )
 
 
 class Experience(BaseModel):
     """Work experience entry"""
 
-    company: str = Field(..., min_length=1, max_length=200)
-    position: str = Field(..., min_length=1, max_length=200)
+    # Accept legacy keys from older exports.
+    company: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        validation_alias=AliasChoices("company", "employer"),
+    )
+    position: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        validation_alias=AliasChoices("position", "role"),
+    )
+
     location: Optional[str] = Field(None, max_length=100)
     startDate: str  # Format: "YYYY-MM" or "YYYY"
     endDate: str  # Format: "YYYY-MM" or "YYYY" or "Present"
@@ -48,12 +75,32 @@ class Project(BaseModel):
     """Project entry"""
 
     name: str = Field(..., min_length=1, max_length=200)
+
+    # Older exports sometimes sent a list of strings; coerce to a single string.
     description: str = Field(..., min_length=1, max_length=1000)  # Increased for AI enhancements
+
     technologies: List[str] = Field(default_factory=list)
-    link: Optional[str] = None
+
+    # Accept legacy "github" key from older exports.
+    link: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("link", "github"),
+    )
+
     highlights: List[str] = Field(default_factory=list)
     startDate: Optional[str] = None
     endDate: Optional[str] = None
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def coerce_project_description(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, list):
+            # Join list items into a compact paragraph
+            parts = [str(x).strip() for x in v if str(x).strip()]
+            return " ".join(parts)
+        return v
 
 
 class Certification(BaseModel):
@@ -74,11 +121,44 @@ class Resume(BaseModel):
     personalInfo: PersonalInfo
     education: List[Education] = Field(default_factory=list)
     experience: List[Experience] = Field(default_factory=list)
+
+    # Some legacy exports sent skills as an object or category list; coerce to List[str].
     skills: List[str] = Field(default_factory=list)
+
     projects: List[Project] = Field(default_factory=list)
     certifications: List[Certification] = Field(default_factory=list)
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
+
+    @field_validator("skills", mode="before")
+    @classmethod
+    def coerce_skills(cls, v):
+        if v is None:
+            return []
+        # legacy: dict (category -> list/str)
+        if isinstance(v, dict):
+            out: List[str] = []
+            for val in v.values():
+                if isinstance(val, list):
+                    out.extend(val)
+                else:
+                    out.extend(re.split(r"[,;\n]", str(val)))
+            return [s.strip() for s in out if str(s).strip()]
+
+        # legacy: list of objects [{category, skills:"a,b"}]
+        if isinstance(v, list):
+            if all(isinstance(x, dict) for x in v):
+                out: List[str] = []
+                for item in v:
+                    raw = item.get("skills") or item.get("items") or ""
+                    out.extend(re.split(r"[,;\n]", str(raw)))
+                return [s.strip() for s in out if str(s).strip()]
+            return [str(s).strip() for s in v if str(s).strip()]
+
+        if isinstance(v, str):
+            return [s.strip() for s in re.split(r"[,;\n]", v) if s.strip()]
+
+        return v
 
     @field_validator("skills")
     @classmethod
@@ -126,9 +206,7 @@ class TailorResponse(BaseModel):
     matchedKeywords: List[str]
     missingKeywords: List[str]
     suggestions: List[str]
-    changes: List[str] = Field(
-        default_factory=list, description="Summary of changes made"
-    )
+    changes: List[str] = Field(default_factory=list, description="Summary of changes made")
 
 
 class GeneratePDFRequest(BaseModel):

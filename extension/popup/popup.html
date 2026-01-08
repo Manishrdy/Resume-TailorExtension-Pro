@@ -59,6 +59,19 @@
                     </button>
                 </div>
 
+<div class="resume-actions resume-actions--secondary resume-actions--toolbar">
+    <button id="export-all-btn" class="btn btn-secondary btn-icon-only btn-compact" title="Export all saved resumes into a single backup JSON file">
+        <span>🧾</span> Export All
+    </button>
+    <button id="import-resumes-btn" class="btn btn-secondary btn-icon-only btn-compact" title="Import a resume JSON file (or a previously exported backup JSON file)">
+        <span>📥</span> Import
+    </button>
+    <button id="clear-storage-btn" class="btn btn-secondary btn-icon-only btn-compact btn-danger-outline" title="Remove resumes, history, and drafts from this browser">
+        <span>🧹</span> Clear
+    </button>
+    <input id="import-file-input" class="hidden" type="file" accept="application/json,.json">
+</div>
+
                 <div id="resume-preview" class="resume-card hidden">
                     <div class="resume-card-header">
                         <div class="resume-avatar">
@@ -95,19 +108,6 @@
                         <button id="delete-resume-btn" class="btn btn-danger btn-icon-only">
                             <span>🗑️</span> Delete
                         </button>
-                    </div>
-
-                    <div class="resume-actions resume-actions--secondary">
-                        <button id="export-all-btn" class="btn btn-secondary btn-icon-only btn-compact" title="Export all saved resumes into a single backup file">
-                            <span>🧾</span> Export All
-                        </button>
-                        <button id="import-resumes-btn" class="btn btn-secondary btn-icon-only btn-compact" title="Import a previously exported backup JSON file">
-                            <span>📥</span> Import
-                        </button>
-                        <button id="clear-storage-btn" class="btn btn-secondary btn-icon-only btn-compact btn-danger-outline" title="Remove resumes, history, and drafts from this browser">
-                            <span>🧹</span> Clear
-                        </button>
-                        <input id="import-file-input" class="hidden" type="file" accept="application/json,.json">
                     </div>
 </div>
             </div>
@@ -340,8 +340,8 @@
                                     <input type="url" name="linkedin" class="form-input" placeholder="linkedin.com/in/username">
                                 </div>
                                 <div class="form-field">
-                                    <label class="form-field-label">Portfolio</label>
-                                    <input type="url" name="portfolio" class="form-input" placeholder="yourwebsite.com">
+                                    <label class="form-field-label">Website</label>
+                                    <input type="url" name="website" class="form-input" placeholder="yourwebsite.com">
                                 </div>
                             </div>
 
@@ -405,6 +405,10 @@
                         <!-- Form Actions -->
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" id="clear-draft-btn">Clear Draft</button>
+<button type="button" class="btn btn-secondary btn-with-icon" id="export-draft-json-btn" title="Export what you've typed to a JSON file (recommended as a backup)">
+    <span class="btn-icon">📦</span>
+    <span>Export Draft</span>
+</button>
                             <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
                             <button type="submit" class="btn btn-success btn-with-icon">
                                 <span class="btn-icon">💾</span>
