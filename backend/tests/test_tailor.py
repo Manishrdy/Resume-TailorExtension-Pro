@@ -5,6 +5,7 @@ Unit tests for AI tailoring endpoint and Gemini service
 import pytest
 from fastapi import status
 import json
+from types import SimpleNamespace
 
 
 @pytest.mark.unit
@@ -202,6 +203,29 @@ def test_json_response_parsing():
     truncated_string = '{"email": "user@example.com'
     repaired = service._parse_json_response(truncated_string)
     assert repaired == {"email": "user@example.com"}
+
+
+@pytest.mark.unit
+def test_extract_response_text_from_parts():
+    """Ensure response text is reconstructed from candidate parts when needed."""
+    from services.gemini import GeminiService
+
+    response = SimpleNamespace(
+        text="",
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(
+                    parts=[
+                        SimpleNamespace(text='{"tailoredResume": '),
+                        SimpleNamespace(text='{"id": "1"}}'),
+                    ]
+                ),
+                finish_reason="STOP",
+            )
+        ],
+    )
+
+    assert GeminiService._extract_response_text(response) == '{"tailoredResume": {"id": "1"}}'
 
 
 @pytest.mark.integration

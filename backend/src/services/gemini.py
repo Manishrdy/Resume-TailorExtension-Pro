@@ -20,6 +20,36 @@ from prompts.tailoring import (
 )
 from models.resume import Resume, TailorResponse
 
+_TAILOR_RESPONSE_SCHEMA = types.Schema(
+    type="OBJECT",
+    properties={
+        "tailoredResume": types.Schema(type="OBJECT"),
+        "matchedKeywords": types.Schema(
+            type="ARRAY",
+            items=types.Schema(type="STRING"),
+        ),
+        "missingKeywords": types.Schema(
+            type="ARRAY",
+            items=types.Schema(type="STRING"),
+        ),
+        "suggestions": types.Schema(
+            type="ARRAY",
+            items=types.Schema(type="STRING"),
+        ),
+        "changes": types.Schema(
+            type="ARRAY",
+            items=types.Schema(type="STRING"),
+        ),
+    },
+    required=[
+        "tailoredResume",
+        "matchedKeywords",
+        "missingKeywords",
+        "suggestions",
+        "changes",
+    ],
+)
+
 
 class GeminiService:
     """Service for interacting with Gemini AI"""
@@ -60,13 +90,22 @@ class GeminiService:
                     max_output_tokens=settings.GEMINI_MAX_TOKENS,
                     system_instruction=SYSTEM_INSTRUCTION,
                     response_mime_type="application/json",  # ✅ FORCE JSON OUTPUT
+                    response_schema=_TAILOR_RESPONSE_SCHEMA,
                 ),
             )
 
             duration_ms = (time.time() - start_time) * 1000
 
             # Extract text from response
-            response_text = response.text
+            response_text = self._extract_response_text(response)
+
+            finish_reason = None
+            if response.candidates:
+                finish_reason = response.candidates[0].finish_reason
+            if finish_reason and finish_reason != "STOP":
+                logger.warning(
+                    f"⚠️ Gemini finished with reason {finish_reason}; response may be incomplete."
+                )
 
             # Validate response is not empty or truncated
             if not response_text:
