@@ -97,45 +97,57 @@
       ]
     }
   ],
-  "skills": [
-    "Python",
-    "JavaScript",
-    "Node.js",
-    "Java",
-    "PII/PHI Data Encryption",
-    "OAuth 2.0",
-    "SSO",
-    "Data Privacy Compliance",
-    "Secure Data Transmission",
-    "FastAPI",
-    "Flask",
-    "Django",
-    "Express.js",
-    "Microsoft Graph API",
-    "REST",
-    "GraphQL",
-    "gRPC",
-    "PostgreSQL",
-    "MySQL",
-    "MongoDB",
-    "Redis",
-    "Apache Kafka",
-    "LLMs",
-    "RAG Pipelines",
-    "LangChain",
-    "spaCy",
-    "Semantic Search",
-    "Fuzzy Search",
-    "Document Parsing",
-    "AWS",
-    "EC2",
-    "S3",
-    "CloudWatch",
-    "Docker",
-    "CI/CD",
-    "GitHub Actions",
-    "Jenkins"
-  ],
+  "skills": {
+    "Programming Languages": [
+      "Python",
+      "JavaScript",
+      "Node.js",
+      "Java"
+    ],
+    "Healthcare & Security": [
+      "PII/PHI Data Encryption",
+      "OAuth 2.0",
+      "SSO",
+      "Data Privacy Compliance",
+      "Secure Data Transmission"
+    ],
+    "Frameworks & API": [
+      "FastAPI",
+      "Flask",
+      "Django",
+      "Express.js",
+      "Microsoft Graph API",
+      "REST",
+      "GraphQL",
+      "gRPC"
+    ],
+    "Databases & Messaging": [
+      "PostgreSQL",
+      "MySQL",
+      "MongoDB",
+      "Redis",
+      "Apache Kafka"
+    ],
+    "AI & NLP": [
+      "LLMs",
+      "RAG Pipelines",
+      "LangChain",
+      "spaCy",
+      "Semantic Search",
+      "Fuzzy Search",
+      "Document Parsing"
+    ],
+    "DevOps & Cloud Platforms": [
+      "AWS",
+      "EC2",
+      "S3",
+      "CloudWatch",
+      "Docker",
+      "CI/CD",
+      "GitHub Actions",
+      "Jenkins"
+    ]
+  },
   "projects": [
     {
       "name": "Scalable Meeting Intelligence Platform",
