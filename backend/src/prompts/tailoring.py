@@ -2,6 +2,7 @@
 Prompt templates for Gemini AI resume tailoring
 Separated for easy modification without touching code
 """
+import json
 
 # System instruction for Gemini
 SYSTEM_INSTRUCTION = """You are an expert ATS (Applicant Tracking System) resume optimizer and career coach.
@@ -29,60 +30,85 @@ You must return a valid JSON object matching this exact structure:
 """
 
 
-def get_tailoring_prompt(resume_json: str, job_description: str) -> str:
+def get_tailoring_prompt(minimal_resume: dict, job_description: str, candidate_name: str) -> str:
     """
-    Generate the main tailoring prompt
+    Generate the main tailoring prompt using minimal resume data
     
     Args:
-        resume_json: JSON string of the original resume
+        minimal_resume: Dict with only summary, experiences, projects, skills
         job_description: The job description text
+        candidate_name: Candidate's name for logging
         
     Returns:
         Complete prompt for Gemini
     """
     return f"""
-TASK: Optimize this resume for the following job description.
+        TASK: Tailor this resume content for the job description below.
 
-JOB DESCRIPTION:
-{job_description}
+        CANDIDATE: {candidate_name}
 
-ORIGINAL RESUME (JSON):
-{resume_json}
+        JOB DESCRIPTION:
+        {job_description}
 
-INSTRUCTIONS:
-1. **Extract Keywords**: Identify important keywords, skills, and requirements from the job description
-2. **Professional Summary**: Rewrite to align with the target role, incorporating key skills and requirements
-3. **Work Experience**: Enhance bullet points to:
-   - Include relevant keywords naturally
-   - Emphasize achievements that match job requirements
-   - Keep company names, titles, and dates unchanged
-   - Quantify achievements where possible
-   - Rewrite bullet points; do not return the same bullets unchanged
-4. **Projects**: Enhance descriptions and highlights to:
-   - Match technical requirements
-   - Include relevant technologies mentioned in JD
-   - Keep project names and links unchanged
-5. **Skills**: Reorder skills by relevance to the job (most relevant first)
-   - If the JD highlights missing but adjacent technologies, add at most 1-2 in the skills list
-6. **Education & Certifications**: Keep unchanged
+        RESUME CONTENT TO ENHANCE:
+        {json.dumps(minimal_resume, indent=2)}
 
-IMPORTANT:
-- Maintain ALL factual information (companies, dates, titles, schools)
-- Only enhance phrasing and keyword integration
-- Keep JSON structure identical to input
-- You must make visible edits to summary and at least 2 experience bullets
-- Return ONLY the JSON object, nothing else
+        INSTRUCTIONS:
+        1. **Summary** (MAX 120 words):
+        - Rewrite to align with target role
+        - Incorporate key skills and requirements from JD
+        - Keep it impactful and concise
 
-OUTPUT:
-Return a JSON object with:
-- tailoredResume: Complete enhanced resume (same structure as input)
-- matchedKeywords: Array of keywords from JD that exist in resume
-- missingKeywords: Array of relevant JD keywords not in resume
-- suggestions: Array of 3-5 actionable suggestions for user
-- changes: Array of summary of changes made (e.g., "Enhanced 5 bullet points in work experience")
+        2. **Experiences** (For each company):
+        - Enhance bullet points to include relevant keywords
+        - Emphasize achievements matching job requirements
+        - KEEP EACH BULLET UNDER 35 WORDS
+        - Return in SAME ORDER as input
 
-Remember: Output must be ONLY valid JSON, no markdown formatting, no explanations.
-"""
+        3. **Projects** (For each project):
+        - Enhance highlights to match technical requirements
+        - Include relevant technologies from JD
+        - KEEP EACH HIGHLIGHT UNDER 25 WORDS
+        - Return in SAME ORDER as input
+
+        4. **Skills**:
+        - Reorder by relevance (most relevant first)
+        - Add 1-2 missing adjacent technologies if strongly implied by JD
+        - Keep categorized format
+
+        CRITICAL RULES:
+        - Be concise and impactful
+        - Only enhance existing content, don't fabricate
+        - Return content in SAME ORDER as input
+        - Match companies/projects by their names exactly
+
+        OUTPUT FORMAT (JSON ONLY):
+        {{
+        "summary": "Enhanced summary text",
+        "experiences": [
+            {{
+            "company": "Company Name",
+            "description": ["Enhanced bullet 1", "Enhanced bullet 2", ...]
+            }}
+        ],
+        "projects": [
+            {{
+            "name": "Project Name",
+            "highlights": ["Enhanced highlight 1", "Enhanced highlight 2", ...]
+            }}
+        ],
+        "skills": {{
+            "Category Name": ["skill1", "skill2", ...],
+            ...
+        }},
+        "matchedKeywords": ["keyword1", "keyword2", ...],
+        "missingKeywords": ["keyword3", "keyword4", ...],
+        "suggestions": ["suggestion1", "suggestion2", ...],
+        "changes": ["change1", "change2", ...]
+        }}
+
+        Return ONLY the JSON object. No markdown, no explanations.
+        """
 
 
 def get_keyword_extraction_prompt(job_description: str) -> str:

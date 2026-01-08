@@ -43,9 +43,9 @@ class Settings(BaseSettings):
 
     # Gemini AI Configuration (NEW google-genai package)
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash-exp"  # Updated to latest model
+    GEMINI_MODEL: str = "gemini-2.5-flash-exp"  # Updated to latest model
     GEMINI_TEMPERATURE: float = 0.7
-    GEMINI_MAX_TOKENS: int = 8192  # Increased for better responses
+    GEMINI_MAX_TOKENS: int = 16384  # Increased for better responses
     GEMINI_TIMEOUT: int = 30
     GEMINI_RETRY_ATTEMPTS: int = 3
     GEMINI_RETRY_DELAY: float = 1.0  # seconds

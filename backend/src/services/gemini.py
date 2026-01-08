@@ -81,31 +81,26 @@ class GeminiService:
         try:
             start_time = time.time()
 
-            # Generate content with configuration
+            # Generate content with proper types for new google-genai package
             response = self.client.models.generate_content(
                 model=self.model,
-                contents=prompt,
+                contents=types.Content(
+                    parts=[types.Part(text=prompt)]
+                ),
                 config=types.GenerateContentConfig(
                     temperature=settings.GEMINI_TEMPERATURE,
                     max_output_tokens=settings.GEMINI_MAX_TOKENS,
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    response_mime_type="application/json",  # ✅ FORCE JSON OUTPUT
-                    response_schema=_TAILOR_RESPONSE_SCHEMA,
+                    system_instruction=types.Content(
+                        parts=[types.Part(text=SYSTEM_INSTRUCTION)]
+                    ),
+                    response_mime_type="application/json",
                 ),
             )
 
             duration_ms = (time.time() - start_time) * 1000
 
             # Extract text from response
-            response_text = self._extract_response_text(response)
-
-            finish_reason = None
-            if response.candidates:
-                finish_reason = response.candidates[0].finish_reason
-            if finish_reason and finish_reason != "STOP":
-                logger.warning(
-                    f"⚠️ Gemini finished with reason {finish_reason}; response may be incomplete."
-                )
+            response_text = response.text
 
             # Validate response is not empty or truncated
             if not response_text:
@@ -316,221 +311,180 @@ STRICT REQUIREMENTS:
         
         return result
 
+    
+    def _extract_minimal_resume(self, resume: Resume) -> dict:
+        """
+        Extract only the content that needs tailoring to minimize tokens
+        
+        Args:
+            resume: Complete Resume object
+            
+        Returns:
+            Minimal dict with only content to be enhanced
+        """
+        # Handle skills - convert list to dict if needed
+        skills = resume.skills
+        if isinstance(skills, list):
+            # If skills is a flat list, group them
+            skills_dict = {}
+            chunk_size = 6
+            for i in range(0, len(skills), chunk_size):
+                chunk = skills[i:i + chunk_size]
+                category = "Primary Skills" if i == 0 else f"Skills Set {i // chunk_size + 1}"
+                skills_dict[category] = chunk
+            skills = skills_dict
+        
+        return {
+            "summary": resume.personalInfo.summary or "",
+            "experiences": [
+                {
+                    "company": exp.company,
+                    "description": exp.description
+                }
+                for exp in resume.experience
+            ],
+            "projects": [
+                {
+                    "name": proj.name,
+                    "highlights": proj.highlights if proj.highlights else 
+                                ([proj.description] if isinstance(proj.description, str) else [])
+                }
+                for proj in resume.projects
+            ],
+            "skills": skills if isinstance(skills, dict) else {}
+        }
+
+    def _merge_tailored_content(self, original: Resume, tailored: dict) -> Resume:
+        """
+        Merge tailored content back into original resume
+        
+        Args:
+            original: Original Resume object
+            tailored: Dict with enhanced content from Gemini
+            
+        Returns:
+            Enhanced Resume object with merged content
+        """
+        # Create a deep copy to avoid mutating original
+        enhanced = original.model_copy(deep=True)
+        
+        # Update summary
+        if "summary" in tailored and tailored["summary"]:
+            enhanced.personalInfo.summary = tailored["summary"]
+        
+        # Update experience descriptions (match by company name)
+        if "experiences" in tailored:
+            tailored_exps = {exp["company"]: exp["description"] for exp in tailored["experiences"]}
+            for exp in enhanced.experience:
+                if exp.company in tailored_exps:
+                    exp.description = tailored_exps[exp.company]
+        
+        # Update project highlights (match by name)
+        if "projects" in tailored:
+            tailored_projs = {proj["name"]: proj.get("highlights", []) for proj in tailored["projects"]}
+            for proj in enhanced.projects:
+                if proj.name in tailored_projs and tailored_projs[proj.name]:
+                    proj.highlights = tailored_projs[proj.name]
+        
+        # Update skills
+        if "skills" in tailored and tailored["skills"]:
+            enhanced.skills = tailored["skills"]
+        
+        return enhanced
+    
     def tailor_resume(
         self, resume: Resume, job_description: str
     ) -> Optional[TailorResponse]:
         """
-        Tailor resume to match job description
-
+        Tailor resume to match job description using minimal token approach
+        
         Args:
-            resume: Original resume
-            job_description: Target job description
-
+            resume: Complete Resume object
+            job_description: Job description text
+            
         Returns:
-            TailorResponse with optimized resume or None if failed
+            TailorResponse with enhanced resume or None if failed
         """
         logger.info(f"🎯 Starting resume tailoring for: {resume.personalInfo.name}")
+        
+        # STEP 1: Extract minimal resume data (saves 60-70% tokens)
+        minimal_resume = self._extract_minimal_resume(resume)
+        minimal_json = json.dumps(minimal_resume)
+        
+        # For comparison, use model_dump_json() which handles datetime serialization
+        full_resume_json = resume.model_dump_json()
+        
         logger.debug("="*80)
-        logger.debug("🔍 RESUME TAILORING - Input:")
-        logger.debug(f"Resume name: {resume.personalInfo.name}")
-        logger.debug(f"Job description length: {len(job_description)} characters")
-        logger.debug(f"Job description: {job_description[:500]}...")
+        logger.debug("🔍 MINIMAL RESUME EXTRACTION:")
+        logger.debug(f"Original resume size: ~{len(full_resume_json)} chars")
+        logger.debug(f"Minimal resume size: ~{len(minimal_json)} chars")
+        logger.debug(f"Token savings: ~{100 - (len(minimal_json) / len(full_resume_json) * 100):.1f}%")
         logger.debug("="*80)
-
-        # Convert resume to JSON
-        resume_json = resume.model_dump_json(indent=2)
-        logger.debug("🔍 RESUME TAILORING - Resume JSON:")
-        logger.debug(f"Resume JSON length: {len(resume_json)} characters")
-        logger.debug(f"Resume JSON preview: {resume_json[:500]}...")
-
-        # Generate prompt
-        prompt = self._build_tailoring_prompt(resume_json, job_description)
-        logger.debug("🔍 RESUME TAILORING - Generated prompt:")
+        
+        # STEP 2: Generate prompt with minimal data
+        prompt = add_json_enforcement(
+            get_tailoring_prompt(minimal_resume, job_description, resume.personalInfo.name)
+        )
+        
+        logger.debug("🔍 Generated prompt:")
         logger.debug(f"Prompt length: {len(prompt)} characters")
-
-        # Make request
+        
+        # STEP 3: Get Gemini response
         response_text = self._make_request(prompt)
-
+        
         if not response_text:
             logger.error("❌ Failed to get response from Gemini")
             return None
-
-        # Parse response
-        parsed_response = self._parse_json_response(response_text)
-
-        if not parsed_response:
-            # Attempt a single regeneration pass if the response looks truncated
-            if not response_text.rstrip().endswith(('}', ']')):
-                logger.warning("🔁 Response appears truncated. Requesting full JSON regeneration...")
-                continuation_prompt = (
-                    prompt
-                    + "\n\nNOTE: Your previous response was truncated. Regenerate the FULL JSON object described above. Return ONLY valid JSON. Start with { and end with }. No markdown."
-                )
-                response_text_2 = self._make_request(continuation_prompt)
-                if response_text_2:
-                    parsed_response = self._parse_json_response(response_text_2)
-
-            if not parsed_response:
-                logger.error("❌ Failed to parse Gemini response")
-                return None
-
-        # DEBUG: Log parsed response structure
-        logger.debug("="*80)
-        logger.debug("🔍 RESUME TAILORING - Parsed response structure:")
-        logger.debug(f"Top-level keys: {list(parsed_response.keys())}")
-        for key in parsed_response.keys():
-            if isinstance(parsed_response[key], (list, dict)):
-                logger.debug(f"  {key}: {type(parsed_response[key]).__name__} with {len(parsed_response[key])} items")
-            else:
-                logger.debug(f"  {key}: {type(parsed_response[key]).__name__}")
-        logger.debug("="*80)
-
-        # Validate and construct TailorResponse
+        
+        # STEP 4: Parse response
+        result = self._parse_json_response(response_text)
+        
+        if not result:
+            logger.error("❌ Failed to parse Gemini response")
+            return None
+        
+        # STEP 5: Merge tailored content back into original resume
         try:
-            # Extract tailored resume
-            tailored_resume_data = parsed_response.get("tailoredResume")
-            if not tailored_resume_data:
-                logger.error("❌ Missing 'tailoredResume' in response")
-                logger.error(f"Available keys: {list(parsed_response.keys())}")
-                return None
+            enhanced_resume = self._merge_tailored_content(resume, result)
             
-            # DEBUG: Log tailored resume data
-            logger.debug("🔍 RESUME TAILORING - Tailored resume data:")
-            logger.debug(f"Tailored resume keys: {list(tailored_resume_data.keys())}")
-            logger.debug(f"Tailored resume (formatted):\n{json.dumps(tailored_resume_data, indent=2)}")
-
-            # Ensure AI output preserves required sections; fallback to original where missing
-            tailored_resume_data = self._merge_with_original(resume, tailored_resume_data)
-
-            # Parse tailored resume
-            tailored_resume = Resume(**tailored_resume_data)
-
-            # Retry once if the resume is unchanged from the original
-            if self._is_resume_unchanged(resume, tailored_resume):
-                logger.warning(
-                    "⚠️ Tailored resume matches original; retrying with strict change requirements."
-                )
-                retry_prompt = self._build_tailoring_prompt(
-                    resume_json,
-                    job_description,
-                    force_changes=True,
-                )
-                retry_response = self._make_request(retry_prompt)
-                if retry_response:
-                    retry_parsed = self._parse_json_response(retry_response)
-                    retry_data = retry_parsed.get("tailoredResume") if retry_parsed else None
-                    if retry_data:
-                        retry_data = self._merge_with_original(resume, retry_data)
-                        retry_resume = Resume(**retry_data)
-                        if not self._is_resume_unchanged(resume, retry_resume):
-                            tailored_resume = retry_resume
-                            tailored_resume_data = retry_data
-                            parsed_response = retry_parsed
-
-            # Determine matched keywords (fallback if missing)
-            matched_keywords = parsed_response.get("matchedKeywords", [])
-            if not matched_keywords:
-                matched_keywords = self._fallback_match_keywords(tailored_resume, job_description)
-
-            # Calculate ATS score (hybrid approach)
-            ats_score = self._calculate_ats_score(
-                tailored_resume,
-                job_description,
-                matched_keywords,
-            )
-
-            # Construct response
-            tailor_response = TailorResponse(
-                tailoredResume=tailored_resume,
-                atsScore=ats_score,
-                matchedKeywords=matched_keywords,
-                missingKeywords=parsed_response.get("missingKeywords", []),
-                suggestions=parsed_response.get("suggestions", []),
-                changes=parsed_response.get("changes", []),
-            )
-
-            logger.info(
-                f"✅ Resume tailored successfully (ATS Score: {ats_score}/100)"
-            )
-            logger.info(
-                f"   Matched: {len(tailor_response.matchedKeywords)} keywords"
-            )
-            logger.info(
-                f"   Missing: {len(tailor_response.missingKeywords)} keywords"
+            logger.info("✅ Successfully merged tailored content into resume")
+            logger.debug("="*80)
+            logger.debug("🔍 MERGE RESULTS:")
+            logger.debug(f"Summary updated: {enhanced_resume.personalInfo.summary != resume.personalInfo.summary}")
+            logger.debug(f"Experiences updated: {len([e for e in enhanced_resume.experience if e != resume.experience[i] for i, _ in enumerate(enhanced_resume.experience)])}")
+            logger.debug(f"Projects updated: {len([p for p in enhanced_resume.projects if p != resume.projects[i] for i, _ in enumerate(enhanced_resume.projects)])}")
+            logger.debug(f"Skills updated: {enhanced_resume.skills != resume.skills}")
+            logger.debug("="*80)
+            
+            # STEP 6: Create response
+            return TailorResponse(
+                tailoredResume=enhanced_resume,
+                atsScore=self._calculate_ats_score(
+                    result.get("matchedKeywords", []),
+                    result.get("missingKeywords", [])
+                ),
+                matchedKeywords=result.get("matchedKeywords", []),
+                missingKeywords=result.get("missingKeywords", []),
+                suggestions=result.get("suggestions", []),
+                changes=result.get("changes", [])
             )
             
-            # DEBUG: Log final tailor response
-            logger.debug("="*80)
-            logger.debug("🔍 RESUME TAILORING - FINAL RESPONSE:")
-            logger.debug(f"ATS Score: {tailor_response.atsScore}")
-            logger.debug(f"Matched keywords ({len(tailor_response.matchedKeywords)}): {tailor_response.matchedKeywords}")
-            logger.debug(f"Missing keywords ({len(tailor_response.missingKeywords)}): {tailor_response.missingKeywords}")
-            logger.debug(f"Suggestions ({len(tailor_response.suggestions)}): {tailor_response.suggestions}")
-            logger.debug(f"Changes ({len(tailor_response.changes)}): {tailor_response.changes}")
-            logger.debug(f"Tailored resume name: {tailor_response.tailoredResume.personalInfo.name}")
-            logger.debug(f"Tailored resume skills: {tailor_response.tailoredResume.skills}")
-            logger.info(f"Complete tailored response (JSON):\n{tailor_response.model_dump_json(indent=2)}")
-            logger.debug("="*80)
-
-            return tailor_response
-
         except Exception as e:
-            logger.error("="*80)
-            logger.error("❌ RESUME TAILORING - Failed to construct TailorResponse")
-            logger.error(f"Error type: {type(e).__name__}")
-            logger.error(f"Error message: {str(e)}")
-            logger.error(f"Parsed response that caused error:\n{json.dumps(parsed_response, indent=2)}")
-            logger.error("="*80)
-            log_ai_error(e, {"parsed_response": parsed_response})
+            logger.error(f"❌ Failed to merge tailored content: {e}")
+            logger.exception("Full traceback:")
             return None
 
-    def _calculate_ats_score(
-        self,
-        resume: Resume,
-        job_description: str,
-        matched_keywords: list,
-    ) -> int:
-        """
-        Calculate ATS score using hybrid approach
-
-        Args:
-            resume: Tailored resume
-            job_description: Job description
-            matched_keywords: Keywords matched by AI
-
-        Returns:
-            ATS score (0-100)
-        """
-        # Extract text from resume for analysis
-        resume_text = self._extract_resume_text(resume).lower()
-        jd_lower = job_description.lower()
-
-        # Count matched keywords
-        keyword_matches = len(matched_keywords)
-
-        # Extract important words from JD (simple approach)
-        jd_words = set(
-            word.strip(".,!?;:")
-            for word in jd_lower.split()
-            if len(word) > 4  # Filter out short words
-        )
-
-        # Count how many JD words appear in resume
-        word_matches = sum(1 for word in jd_words if word in resume_text)
-        total_jd_words = len(jd_words)
-
-        # Calculate score components
-        keyword_score = min(40, keyword_matches * 3)  # Up to 40 points
-        word_match_score = (
-            (word_matches / total_jd_words) * 40 if total_jd_words > 0 else 0
-        )  # Up to 40 points
-        completeness_score = 20  # Base score for having complete sections
-
-        # Total score
-        total_score = int(keyword_score + word_match_score + completeness_score)
-
-        # Cap at 100
-        return min(100, total_score)
+    def _calculate_ats_score(self, matched: list, missing: list) -> int:
+        """Calculate ATS score based on keyword matching"""
+        if not matched and not missing:
+            return 75
+        
+        total = len(matched) + len(missing)
+        if total == 0:
+            return 75
+        
+        score = int((len(matched) / total) * 100)
+        return max(0, min(100, score))
 
     def _fallback_match_keywords(self, resume: Resume, job_description: str) -> list:
         """Fallback keyword matching when AI response doesn't provide them.
