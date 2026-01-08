@@ -142,6 +142,11 @@ def test_json_response_parsing():
     parsed = service._parse_json_response(invalid)
     assert parsed is None
 
+    # Test with truncated JSON ending mid-string (should repair)
+    truncated_string = '{"email": "user@example.com'
+    repaired = service._parse_json_response(truncated_string)
+    assert repaired == {"email": "user@example.com"}
+
 
 @pytest.mark.integration
 def test_full_tailoring_flow(test_client, sample_resume, sample_job_description, mock_gemini_client):

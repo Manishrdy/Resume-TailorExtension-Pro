@@ -6,6 +6,7 @@ Handles communication with Open Resume service for PDF generation
 import httpx
 from typing import Optional
 import time
+import json
 
 from app.config import settings
 from utils.logger import logger, log_error
@@ -38,8 +39,9 @@ class PDFClientService:
             logger.info(f"📄 Generating PDF for: {resume.personalInfo.name}")
             logger.info(f"   Resume ID: {resume.id}")
 
-            # Convert resume to dict for API
-            resume_data = resume.model_dump()
+            # Convert resume to JSON-friendly dict (ensure datetime serialization)
+            # Using Pydantic's JSON encoding to handle datetimes and other types
+            resume_data = json.loads(resume.model_dump_json())
 
             # Call Open Resume API
             async with httpx.AsyncClient(timeout=self.timeout) as client:

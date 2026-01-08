@@ -5,6 +5,7 @@ Uses the new google-genai package
 
 import json
 import time
+import re
 from typing import Dict, Any, Optional
 from google import genai
 from google.genai import types
@@ -58,6 +59,7 @@ class GeminiService:
                     temperature=settings.GEMINI_TEMPERATURE,
                     max_output_tokens=settings.GEMINI_MAX_TOKENS,
                     system_instruction=SYSTEM_INSTRUCTION,
+                    response_mime_type="application/json",  # ✅ FORCE JSON OUTPUT
                 ),
             )
 
@@ -65,6 +67,15 @@ class GeminiService:
 
             # Extract text from response
             response_text = response.text
+
+            # Validate response is not empty or truncated
+            if not response_text:
+                raise ValueError("Empty response from Gemini")
+            
+            # Check if response seems truncated (doesn't end with } or ])
+            if not response_text.rstrip().endswith(('}', ']')):
+                logger.warning("⚠️ Response may be truncated, missing closing brace/bracket")
+                logger.warning(f"Response ends with: {response_text[-50:]}")
 
             # Log successful request
             log_ai_request(
@@ -79,7 +90,7 @@ class GeminiService:
             logger.debug("🔍 GEMINI RAW RESPONSE:")
             logger.debug(f"Response length: {len(response_text)} characters")
             logger.debug(f"Response preview: {response_text[:200]}...")
-            logger.debug(f"Full response text:\n{response_text}")
+            logger.debug(f"Response ending: ...{response_text[-200:]}")
             logger.debug("="*80)
 
             return response_text
@@ -136,6 +147,7 @@ class GeminiService:
             # DEBUG: Log cleaned response
             logger.debug("🔍 JSON PARSING - After cleaning:")
             logger.debug(f"Cleaned text (first 500 chars): {cleaned[:500]}...")
+            logger.debug(f"Cleaned text (last 200 chars): ...{cleaned[-200:]}")
 
             # Parse JSON
             parsed = json.loads(cleaned)
@@ -144,7 +156,6 @@ class GeminiService:
             # DEBUG: Log parsed structure
             logger.debug("🔍 JSON PARSING - Parsed structure:")
             logger.debug(f"Keys in parsed JSON: {list(parsed.keys())}")
-            logger.debug(f"Full parsed JSON:\n{json.dumps(parsed, indent=2)}")
             
             return parsed
 
@@ -155,9 +166,62 @@ class GeminiService:
             logger.error(f"Error position: Line {e.lineno}, Column {e.colno}")
             logger.error(f"Response text (first 500): {response_text[:500]}...")
             logger.error(f"Response text (last 500): ...{response_text[-500:]}")
-            logger.error(f"Full response text for debugging:\n{response_text}")
-            logger.error("="*80)
-            return None
+            
+            # Attempt to repair truncated JSON
+            logger.warning("🔧 Attempting to repair truncated JSON...")
+            try:
+                # Start with cleaned text (remove possible markdown fences)
+                repaired = response_text.strip()
+                if repaired.startswith("```json"):
+                    repaired = repaired[7:]
+                if repaired.startswith("```"):
+                    repaired = repaired[3:]
+                if repaired.endswith("```"):
+                    repaired = repaired[:-3]
+                repaired = repaired.strip()
+                
+                # If the content appears to end inside a string, close the quote
+                # Detect odd number of unescaped quotes as a heuristic
+                unescaped_quote_count = len(re.findall(r'(?<!\\)"', repaired))
+                if unescaped_quote_count % 2 == 1:
+                    repaired += '"'
+                    logger.warning("Closed unterminated string by appending ending quote")
+
+                # Count braces
+                open_braces = repaired.count('{')
+                close_braces = repaired.count('}')
+                open_brackets = repaired.count('[')
+                close_brackets = repaired.count(']')
+                
+                # Add missing closing characters
+                if open_braces > close_braces:
+                    repaired += '}' * (open_braces - close_braces)
+                    logger.warning(f"Added {open_braces - close_braces} closing braces")
+                
+                if open_brackets > close_brackets:
+                    repaired += ']' * (open_brackets - close_brackets)
+                    logger.warning(f"Added {open_brackets - close_brackets} closing brackets")
+
+                # Remove trailing commas before object/array closers (common truncation issue)
+                # Example: {"email": "x",} -> {"email": "x"}
+                repaired = re.sub(r",\s*(\}|\])", r"\1", repaired)
+
+                # If the text ends with a dangling comma, drop it
+                if repaired.rstrip().endswith(','):
+                    repaired = repaired.rstrip()
+                    repaired = repaired[:-1]
+                    logger.warning("Removed trailing dangling comma at end of JSON")
+                
+                # Try parsing repaired JSON
+                parsed = json.loads(repaired)
+                logger.info("✅ Successfully repaired and parsed JSON!")
+                return parsed
+                
+            except Exception as repair_error:
+                logger.error(f"❌ JSON repair failed: {repair_error}")
+                logger.error(f"Full response text for debugging:\n{response_text}")
+                logger.error("="*80)
+                return None
 
     def extract_keywords(self, job_description: str) -> Optional[Dict[str, Any]]:
         """
@@ -235,8 +299,20 @@ class GeminiService:
         parsed_response = self._parse_json_response(response_text)
 
         if not parsed_response:
-            logger.error("❌ Failed to parse Gemini response")
-            return None
+            # Attempt a single regeneration pass if the response looks truncated
+            if not response_text.rstrip().endswith(('}', ']')):
+                logger.warning("🔁 Response appears truncated. Requesting full JSON regeneration...")
+                continuation_prompt = (
+                    prompt
+                    + "\n\nNOTE: Your previous response was truncated. Regenerate the FULL JSON object described above. Return ONLY valid JSON. Start with { and end with }. No markdown."
+                )
+                response_text_2 = self._make_request(continuation_prompt)
+                if response_text_2:
+                    parsed_response = self._parse_json_response(response_text_2)
+
+            if not parsed_response:
+                logger.error("❌ Failed to parse Gemini response")
+                return None
 
         # DEBUG: Log parsed response structure
         logger.debug("="*80)
@@ -266,18 +342,23 @@ class GeminiService:
             # Parse tailored resume
             tailored_resume = Resume(**tailored_resume_data)
 
+            # Determine matched keywords (fallback if missing)
+            matched_keywords = parsed_response.get("matchedKeywords", [])
+            if not matched_keywords:
+                matched_keywords = self._fallback_match_keywords(tailored_resume, job_description)
+
             # Calculate ATS score (hybrid approach)
             ats_score = self._calculate_ats_score(
                 tailored_resume,
                 job_description,
-                parsed_response.get("matchedKeywords", []),
+                matched_keywords,
             )
 
             # Construct response
             tailor_response = TailorResponse(
                 tailoredResume=tailored_resume,
                 atsScore=ats_score,
-                matchedKeywords=parsed_response.get("matchedKeywords", []),
+                matchedKeywords=matched_keywords,
                 missingKeywords=parsed_response.get("missingKeywords", []),
                 suggestions=parsed_response.get("suggestions", []),
                 changes=parsed_response.get("changes", []),
@@ -365,6 +446,22 @@ class GeminiService:
 
         # Cap at 100
         return min(100, total_score)
+
+    def _fallback_match_keywords(self, resume: Resume, job_description: str) -> list:
+        """Fallback keyword matching when AI response doesn't provide them.
+
+        Uses a simple intersection between resume skills and job description tokens.
+        """
+        jd_tokens = set(
+            token.lower().strip(".,!?;:/()[]{}")
+            for token in job_description.split()
+            if len(token) >= 2
+        )
+        resume_skills = {skill.lower() for skill in resume.skills}
+        matched = sorted(list(resume_skills.intersection(jd_tokens)))
+        # Return capitalized form based on original skills order
+        ordered = [skill for skill in resume.skills if skill.lower() in matched]
+        return ordered
 
     def _extract_resume_text(self, resume: Resume) -> str:
         """Extract all text from resume for analysis"""

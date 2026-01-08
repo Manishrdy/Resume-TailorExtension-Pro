@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from datetime import datetime
 
 from models.resume import GeneratePDFRequest
-from services.pdf_client import get_pdf_client
+from services import pdf_client
 from utils.logger import logger, log_error
 
 router = APIRouter()
@@ -63,7 +63,7 @@ async def generate_pdf(request: GeneratePDFRequest):
 
         # Get PDF client
         try:
-            pdf_client = get_pdf_client()
+            client = pdf_client.get_pdf_client()
         except Exception as e:
             logger.error(f"Failed to initialize PDF client: {e}")
             raise HTTPException(
@@ -73,7 +73,7 @@ async def generate_pdf(request: GeneratePDFRequest):
 
         # Generate PDF
         logger.info("🔄 Sending request to Open Resume service...")
-        pdf_bytes = await pdf_client.generate_pdf(request.resume)
+        pdf_bytes = await client.generate_pdf(request.resume)
 
         # Check if generation succeeded
         if not pdf_bytes:
@@ -135,22 +135,22 @@ async def pdf_status():
     Check if the PDF generation service is properly configured and available
     """
     try:
-        pdf_client = get_pdf_client()
-        is_healthy = await pdf_client.check_service_health()
+        client = pdf_client.get_pdf_client()
+        is_healthy = await client.check_service_health()
 
         if is_healthy:
             return {
                 "status": "available",
                 "service": "Open Resume",
-                "url": pdf_client.base_url,
+                "url": client.base_url,
                 "message": "PDF generation service is ready",
             }
         else:
             return {
                 "status": "unavailable",
                 "service": "Open Resume",
-                "url": pdf_client.base_url,
-                "message": f"Cannot connect to Open Resume at {pdf_client.base_url}",
+                "url": client.base_url,
+                "message": f"Cannot connect to Open Resume at {client.base_url}",
             }
 
     except Exception as e:
