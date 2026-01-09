@@ -30,6 +30,83 @@ class PDFClientService:
         return start or end or ""
 
     @staticmethod
+    def _sanitize_bullet_point(text: str) -> str:
+        """Sanitize bullet point text by removing line breaks and extra whitespace."""
+        if not text:
+            return ""
+        # Replace line breaks with spaces
+        text = re.sub(r"\r?\n", " ", text)
+        # Replace multiple spaces with single space
+        text = re.sub(r"\s+", " ", text)
+        # Strip leading/trailing whitespace
+        return text.strip()
+
+    @staticmethod
+    def _categorize_skills(skills: List[str]) -> Dict[str, List[str]]:
+        """Intelligently categorize skills into groups."""
+        # Define skill categories with keywords
+        categories = {
+            "Programming Languages": [
+                "python", "javascript", "typescript", "java", "c#", "c++", "go",
+                "rust", "ruby", "php", "swift", "kotlin", "scala", "r", "julia"
+            ],
+            "Frontend Frameworks": [
+                "react", "vue", "angular", "svelte", "next.js", "nuxt", "gatsby",
+                "redux", "mobx", "jquery", "tailwind", "bootstrap", "material-ui"
+            ],
+            "Backend Frameworks": [
+                "node.js", "express", "fastapi", "flask", "django", "spring", "spring boot",
+                ".net", "asp.net", "laravel", "rails", "gin", "fiber"
+            ],
+            "Databases & Messaging": [
+                "postgresql", "mysql", "mongodb", "redis", "cassandra", "dynamodb",
+                "elasticsearch", "kafka", "rabbitmq", "sql server", "oracle", "sqlite"
+            ],
+            "Cloud & DevOps": [
+                "aws", "azure", "gcp", "docker", "kubernetes", "terraform", "ansible",
+                "jenkins", "github actions", "gitlab ci", "circleci", "travis ci",
+                "cloudwatch", "ec2", "s3", "lambda", "ecs", "eks"
+            ],
+            "AI & Machine Learning": [
+                "llm", "gpt", "gemini", "openai", "langchain", "hugging face",
+                "tensorflow", "pytorch", "scikit-learn", "spacy", "nltk",
+                "rag", "semantic search", "fuzzy search", "vector database"
+            ],
+            "Tools & APIs": [
+                "rest", "graphql", "grpc", "oauth", "jwt", "sso", "git",
+                "postman", "swagger", "jira", "confluence", "slack"
+            ],
+        }
+
+        categorized = {}
+        uncategorized = []
+
+        for skill in skills:
+            skill_lower = skill.lower().strip()
+            matched = False
+
+            for category, keywords in categories.items():
+                for keyword in keywords:
+                    # Use exact word matching or containment check
+                    if keyword == skill_lower or keyword in skill_lower:
+                        if category not in categorized:
+                            categorized[category] = []
+                        categorized[category].append(skill)
+                        matched = True
+                        break
+                if matched:
+                    break
+
+            if not matched:
+                uncategorized.append(skill)
+
+        # Add uncategorized skills to "Other" category if any
+        if uncategorized:
+            categorized["Other"] = uncategorized
+
+        return categorized
+
+    @staticmethod
     def _split_description_to_bullets(description: Optional[str]) -> List[str]:
         if not description:
             return []
@@ -50,24 +127,165 @@ class PDFClientService:
 
     def _to_open_resume_payload(self, resume: Resume) -> Dict[str, Any]:
         """Convert Resume to Open Resume API payload format.
-        
+
         The Open Resume PDF generator expects the resume in its native structure,
         matching the sample-resume.json format exactly.
         """
-        
+
+        # Transform profile to Open Resume format
+        # Open Resume expects: name, email, phone, location, url, portfolio, github, summary
+        profile = {
+            "name": resume.personalInfo.name,
+            "email": resume.personalInfo.email,
+        }
+
+        # Add optional fields if present
+        if resume.personalInfo.phone:
+            profile["phone"] = resume.personalInfo.phone
+        if resume.personalInfo.location:
+            profile["location"] = resume.personalInfo.location
+        if resume.personalInfo.summary:
+            profile["summary"] = resume.personalInfo.summary
+
+        # Map our fields to Open Resume's expected fields
+        # Open Resume shows: email, phone, location, url, portfolio, github
+        # Priority: website -> url, linkedin -> portfolio (if no website), github -> github
+        if resume.personalInfo.website:
+            profile["url"] = resume.personalInfo.website
+
+        if resume.personalInfo.linkedin:
+            # If we have a website, put linkedin in portfolio, otherwise in url
+            if resume.personalInfo.website:
+                profile["portfolio"] = resume.personalInfo.linkedin
+            else:
+                profile["url"] = resume.personalInfo.linkedin
+
+        if resume.personalInfo.github:
+            profile["github"] = resume.personalInfo.github
+
+        # Transform work experiences to Open Resume format
+        work_experiences = []
+        for exp in resume.experience:
+            # Sanitize each description to remove line breaks
+            sanitized_descriptions = [
+                self._sanitize_bullet_point(desc) for desc in exp.description
+            ]
+            work_experiences.append({
+                "company": exp.company,
+                "jobTitle": exp.position,
+                "date": self._format_date_range(exp.startDate, exp.endDate),
+                "descriptions": sanitized_descriptions,
+            })
+
+        # Transform educations to Open Resume format
+        educations = []
+        for edu in resume.education:
+            education_entry = {
+                "school": edu.institution,
+                "degree": edu.degree,
+                "date": self._format_date_range(edu.startDate, edu.endDate),
+            }
+            if edu.gpa:
+                education_entry["gpa"] = edu.gpa
+            if edu.achievements:
+                # Sanitize achievements
+                education_entry["descriptions"] = [
+                    self._sanitize_bullet_point(ach) for ach in edu.achievements
+                ]
+            educations.append(education_entry)
+
+        # Transform projects to Open Resume format
+        projects = []
+        for proj in resume.projects:
+            # Sanitize project highlights
+            sanitized_highlights = [
+                self._sanitize_bullet_point(highlight) for highlight in proj.highlights
+            ]
+            project_entry = {
+                "project": proj.name,
+                "descriptions": sanitized_highlights,
+            }
+            if proj.startDate or proj.endDate:
+                project_entry["date"] = self._format_date_range(proj.startDate, proj.endDate)
+            if proj.link:
+                project_entry["url"] = proj.link
+            projects.append(project_entry)
+
+        # Transform skills to Open Resume format
+        # Open Resume expects: { featuredSkills: [{skill, rating}], descriptions: [] }
+        # Strategy:
+        # 1. Take first 6 skills as featured with rating 4
+        # 2. Categorize remaining skills and format as bullet points
+        # NOTE: Featured skills must be exactly 6 items (can be empty strings)
+        featured_skills = []
+        skill_descriptions = []
+
+        # First 6 skills become featured skills with rating
+        # Always pad to 6 items (Open Resume component expects exactly 6)
+        for idx in range(6):
+            if idx < len(resume.skills):
+                featured_skills.append({"skill": resume.skills[idx], "rating": 4})
+            else:
+                # Pad with empty skill if fewer than 6 total skills
+                featured_skills.append({"skill": "", "rating": 4})
+
+        # Remaining skills get categorized and formatted
+        if len(resume.skills) > 6:
+            remaining_skills = resume.skills[6:]
+            categorized = self._categorize_skills(remaining_skills)
+
+            # Format each category as "Category: skill1, skill2, skill3"
+            for category, category_skills in categorized.items():
+                if category_skills:
+                    skills_str = ", ".join(category_skills)
+                    skill_descriptions.append(f"{category}: {skills_str}")
+
+        skills = {
+            "featuredSkills": featured_skills,
+            "descriptions": skill_descriptions,
+        }
+
+        # Add custom section (empty by default)
+        custom = {
+            "descriptions": []
+        }
+
         return {
             "resume": {
-                "personalInfo": resume.personalInfo.model_dump(exclude_none=True),
-                "experience": [exp.model_dump(exclude_none=True) for exp in resume.experience],
-                "education": [edu.model_dump(exclude_none=True) for edu in resume.education],
-                "skills": resume.skills,
-                "projects": [proj.model_dump(exclude_none=True) for proj in resume.projects],
+                "profile": profile,
+                "workExperiences": work_experiences,
+                "educations": educations,
+                "skills": skills,
+                "projects": projects,
+                "custom": custom,
             },
             "settings": {
                 "fontFamily": settings.OPEN_RESUME_FONT_FAMILY,
                 "fontSize": settings.OPEN_RESUME_FONT_SIZE,
                 "themeColor": settings.OPEN_RESUME_THEME_COLOR,
                 "documentSize": settings.OPEN_RESUME_DOCUMENT_SIZE,
+                "formToHeading": {
+                    "workExperiences": "WORK EXPERIENCE",
+                    "educations": "EDUCATION",
+                    "projects": "PROJECTS",
+                    "skills": "SKILLS",
+                    "custom": "CUSTOM",
+                },
+                "formToShow": {
+                    "workExperiences": True,
+                    "educations": True,
+                    "projects": True,
+                    "skills": True,
+                    "custom": True,
+                },
+                "formsOrder": ["workExperiences", "educations", "projects", "skills", "custom"],
+                "showBulletPoints": {
+                    "workExperiences": True,
+                    "educations": True,
+                    "projects": True,
+                    "skills": True,
+                    "custom": True,
+                },
             },
         }
 
