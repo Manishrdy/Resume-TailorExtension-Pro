@@ -20,9 +20,12 @@ const api = {
         }
     },
 
-    // Tailor resume
-    async tailorResume(resume, jobDescription) {
+    // Tailor resume with timeout support
+    async tailorResume(resume, jobDescription, timeoutMs = 60000) {
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            
             const response = await fetch(`${this.baseUrl}/api/tailor`, {
                 method: 'POST',
                 headers: {
@@ -32,8 +35,11 @@ const api = {
                     resume: resume,
                     jobDescription: jobDescription,
                     preserveStructure: true
-                })
+                }),
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const error = await response.json();
@@ -42,6 +48,10 @@ const api = {
 
             return await response.json();
         } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error('Tailor request timeout after 60 seconds');
+                throw new Error('AI processing timed out. The request took too long. Please try again.');
+            }
             console.error('Tailor API error:', error);
             throw error;
         }

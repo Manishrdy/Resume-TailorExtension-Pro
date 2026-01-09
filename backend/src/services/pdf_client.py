@@ -49,73 +49,19 @@ class PDFClientService:
         return sentence_parts or primary_parts
 
     def _to_open_resume_payload(self, resume: Resume) -> Dict[str, Any]:
-        profile = resume.personalInfo
-        open_profile = {
-            "name": profile.name,
-            "summary": profile.summary or "",
-            "email": profile.email,
-            "phone": profile.phone or "",
-            "location": profile.location or "",
-            "url": profile.linkedin or profile.website or "",
-            "portfolio": profile.website or "",
-            "github": profile.github or "",
-        }
-
-        work_experiences = [
-            {
-                "company": exp.company,
-                "jobTitle": exp.position,
-                "date": self._format_date_range(exp.startDate, exp.endDate),
-                "descriptions": exp.description,
-            }
-            for exp in resume.experience
-        ]
-
-        educations = [
-            {
-                "school": edu.institution,
-                "degree": edu.degree if not edu.field else f"{edu.degree} in {edu.field}",
-                "date": self._format_date_range(edu.startDate, edu.endDate),
-                "gpa": edu.gpa,
-                "descriptions": edu.achievements,
-            }
-            for edu in resume.education
-        ]
-
-        projects = []
-        for project in resume.projects:
-            descriptions = (
-                project.highlights
-                if project.highlights
-                else self._split_description_to_bullets(project.description)
-            )
-            projects.append(
-                {
-                    "project": project.name,
-                    "date": self._format_date_range(
-                        project.startDate, project.endDate
-                    ),
-                    "descriptions": descriptions,
-                    "url": project.link or "",
-                }
-            )
-
-        skills_list = resume.skills
-        skills_description = ", ".join(skills_list) if skills_list else ""
-
+        """Convert Resume to Open Resume API payload format.
+        
+        The Open Resume PDF generator expects the resume in its native structure,
+        matching the sample-resume.json format exactly.
+        """
+        
         return {
             "resume": {
-                "profile": open_profile,
-                "workExperiences": work_experiences,
-                "educations": educations,
-                "projects": projects,
-                "skills": {
-                    "featuredSkills": [],
-                    "descriptions": [skills_description]
-                    if skills_description
-                    else [],
-                },
-                "custom": {"descriptions": []},
+                "personalInfo": resume.personalInfo.model_dump(exclude_none=True),
+                "experience": [exp.model_dump(exclude_none=True) for exp in resume.experience],
+                "education": [edu.model_dump(exclude_none=True) for edu in resume.education],
+                "skills": resume.skills,
+                "projects": [proj.model_dump(exclude_none=True) for proj in resume.projects],
             },
             "settings": {
                 "fontFamily": settings.OPEN_RESUME_FONT_FAMILY,

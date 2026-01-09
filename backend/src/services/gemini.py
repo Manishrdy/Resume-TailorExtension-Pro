@@ -6,6 +6,7 @@ Uses the new google-genai package
 import json
 import time
 import re
+import threading
 from typing import Dict, Any, Optional
 from google import genai
 from google.genai import types
@@ -51,6 +52,51 @@ _TAILOR_RESPONSE_SCHEMA = types.Schema(
 )
 
 
+class TimeoutError(Exception):
+    """Raised when a Gemini API call times out"""
+    pass
+
+
+def _call_with_timeout(func, timeout_seconds, *args, **kwargs):
+    """
+    Call a function with a timeout using threading
+    
+    Args:
+        func: Function to call
+        timeout_seconds: Timeout in seconds
+        *args: Positional arguments for func
+        **kwargs: Keyword arguments for func
+        
+    Returns:
+        Result from func or None if timeout occurred
+        
+    Raises:
+        TimeoutError: If function call exceeds timeout
+    """
+    result = [None]
+    exception = [None]
+    
+    def target():
+        try:
+            result[0] = func(*args, **kwargs)
+        except Exception as e:
+            exception[0] = e
+    
+    thread = threading.Thread(target=target, daemon=False)
+    thread.start()
+    thread.join(timeout=timeout_seconds)
+    
+    if thread.is_alive():
+        # Thread is still running - timeout occurred
+        logger.error(f"⏱️ Gemini API call timed out after {timeout_seconds} seconds")
+        raise TimeoutError(f"Gemini API call timed out after {timeout_seconds} seconds")
+    
+    if exception[0]:
+        raise exception[0]
+    
+    return result[0]
+
+
 class GeminiService:
     """Service for interacting with Gemini AI"""
 
@@ -69,7 +115,7 @@ class GeminiService:
         self, prompt: str, retry_count: int = 0
     ) -> Optional[str]:
         """
-        Make a request to Gemini API with retry logic
+        Make a request to Gemini API with retry logic and timeout
 
         Args:
             prompt: The prompt to send
@@ -80,24 +126,33 @@ class GeminiService:
         """
         try:
             start_time = time.time()
+            logger.info(f"📤 Calling Gemini API (model: {self.model}, attempt: {retry_count + 1}/{settings.GEMINI_RETRY_ATTEMPTS}, timeout: {settings.GEMINI_TIMEOUT}s)")
 
-            # Generate content with proper types for new google-genai package
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=types.Content(
-                    parts=[types.Part(text=prompt)]
-                ),
-                config=types.GenerateContentConfig(
-                    temperature=settings.GEMINI_TEMPERATURE,
-                    max_output_tokens=settings.GEMINI_MAX_TOKENS,
-                    system_instruction=types.Content(
-                        parts=[types.Part(text=SYSTEM_INSTRUCTION)]
+            # Define the API call function for timeout wrapper
+            def api_call():
+                return self.client.models.generate_content(
+                    model=self.model,
+                    contents=types.Content(
+                        parts=[types.Part(text=prompt)]
                     ),
-                    response_mime_type="application/json",
-                ),
+                    config=types.GenerateContentConfig(
+                        temperature=settings.GEMINI_TEMPERATURE,
+                        max_output_tokens=settings.GEMINI_MAX_TOKENS,
+                        system_instruction=types.Content(
+                            parts=[types.Part(text=SYSTEM_INSTRUCTION)]
+                        ),
+                        response_mime_type="application/json",
+                    ),
+                )
+            
+            # Call with timeout
+            response = _call_with_timeout(
+                api_call, 
+                settings.GEMINI_TIMEOUT
             )
 
             duration_ms = (time.time() - start_time) * 1000
+            logger.info(f"✅ Gemini API responded in {duration_ms:.0f}ms")
 
             # Extract text from response
             response_text = response.text
@@ -129,6 +184,20 @@ class GeminiService:
 
             return response_text
 
+        except TimeoutError as e:
+            # Don't retry on timeout - log and fail immediately
+            logger.error(f"⏱️ Gemini API call timed out after {settings.GEMINI_TIMEOUT} seconds")
+            log_ai_error(
+                e,
+                {
+                    "retry_count": retry_count,
+                    "prompt_length": len(prompt),
+                    "model": self.model,
+                    "timeout_seconds": settings.GEMINI_TIMEOUT,
+                },
+            )
+            return None
+
         except Exception as e:
             # Log error with context
             log_ai_error(
@@ -140,7 +209,7 @@ class GeminiService:
                 },
             )
 
-            # Retry logic
+            # Retry logic (only for non-timeout errors)
             if retry_count < settings.GEMINI_RETRY_ATTEMPTS:
                 delay = settings.GEMINI_RETRY_DELAY * (2**retry_count)  # Exponential backoff
                 logger.warning(

@@ -1502,14 +1502,23 @@ async function handleTailor() {
     console.log('=== END DEBUG ===');
 
     try {
-        // Show loading
+        // Show loading with progress message
         elements.loading.classList.remove('hidden');
         elements.results.classList.add('hidden');
         elements.tailorBtn.disabled = true;
         hideMessages();
+        
+        // Update loading message with animated progress
+        const loadingMsg = elements.loading.querySelector('p') || elements.loading;
+        let dotCount = 0;
+        const progressInterval = setInterval(() => {
+            dotCount = (dotCount + 1) % 4;
+            loadingMsg.textContent = 'AI is analyzing and optimizing your resume' + '.'.repeat(dotCount);
+        }, 500);
 
-        // Call API
-        const result = await api.tailorResume(currentResume, jobDesc);
+        // Call API with 60 second timeout
+        const result = await api.tailorResume(currentResume, jobDesc, 60000);
+        clearInterval(progressInterval);
         console.log('=== DEBUG: Tailoring Result ===');
         console.log(JSON.stringify(result, null, 2));
         console.log('=== END DEBUG ===');
@@ -1541,6 +1550,7 @@ async function handleTailor() {
         showSuccess(`ATS Score: ${result.atsScore}/100`);
 
     } catch (error) {
+        clearInterval(progressInterval);
         console.error('Tailor error:', error);
         elements.loading.classList.add('hidden');
         showError(error.message || 'Tailoring failed. Check backend connection.');

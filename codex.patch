@@ -1,0 +1,798 @@
+diff --git a/.gitignore b/.gitignore
+index 25ee5d4c3178e155e169640dfc8c2566533ef592..25e63d70a3ea047eae5252ffe1472d067498db8d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -55,25 +55,29 @@ logs/
+ *~
+ .DS_Store
+ 
+ # Node.js (Open Resume)
+ node_modules/
+ .next/
+ out/
+ .cache/
+ npm-debug.log*
+ yarn-debug.log*
+ yarn-error.log*
+ 
+ # Docker
+ *.dockerignore
+ 
+ # OS
+ Thumbs.db
+ .DS_Store
+ 
+ # Project specific
+ backend/logs/
+ backend/src/__pycache__/
+ backend/tests/__pycache__/
+ *.pdf
+ *.docx
++
++# Allow Open Resume app library files
++!open-resume-service/src/app/lib/
++!open-resume-service/src/app/lib/**
+diff --git a/backend/.env.example b/backend/.env.example
+index 3f7076af3c4174b4d9cb7d99679f412a35dd655d..b20eacef6bef32831ae2fa234d69a9652a13baf7 100644
+--- a/backend/.env.example
++++ b/backend/.env.example
+@@ -1,32 +1,36 @@
+ # Environment Configuration
+ ENVIRONMENT=development
+ 
+ # API Configuration
+ API_HOST=0.0.0.0
+ API_PORT=8000
+ API_URL=http://localhost:8000
+ 
+ # CORS Configuration (comma-separated)
+ CORS_ORIGINS=chrome-extension://*,http://localhost:5173,http://localhost:3000
+ 
+ # Open Resume Service Configuration
+ OPEN_RESUME_URL=http://localhost:3000
+ OPEN_RESUME_API_TIMEOUT=30
++OPEN_RESUME_FONT_FAMILY=Open Sans
++OPEN_RESUME_FONT_SIZE=11
++OPEN_RESUME_THEME_COLOR=#000000
++OPEN_RESUME_DOCUMENT_SIZE=A4
+ 
+ # Google Gemini AI Configuration (REQUIRED)
+ # Get your API key from: https://aistudio.google.com/app/apikey
+ GEMINI_API_KEY=your_gemini_api_key_here
+ GEMINI_MODEL=gemini-2.0-flash-exp
+ GEMINI_TEMPERATURE=0.7
+ GEMINI_MAX_TOKENS=8192
+ GEMINI_TIMEOUT=30
+ GEMINI_RETRY_ATTEMPTS=3
+ GEMINI_RETRY_DELAY=1.0
+ 
+ # Logging Configuration
+ LOG_LEVEL=INFO
+ LOG_FORMAT=console
+ 
+ # Request Configuration
+ REQUEST_TIMEOUT=60
+ MAX_RESUME_SIZE=5242880
+diff --git a/backend/src/app/config.py b/backend/src/app/config.py
+index 8e7e0830573aa5e98e9491ec64bd09c12dae6474..e376ba39135e0f56cbb95e32460b347f54419339 100644
+--- a/backend/src/app/config.py
++++ b/backend/src/app/config.py
+@@ -18,50 +18,54 @@ print(f"🔍 Looking for .env at: {env_path}")
+ 
+ if env_path.exists():
+     load_dotenv(dotenv_path=env_path)
+     print(f"✅ Loaded .env from: {env_path}")
+ else:
+     print(f"⚠️  .env file not found at: {env_path}")
+ 
+ 
+ class Settings(BaseSettings):
+     """Application settings loaded from environment variables"""
+ 
+     # Environment
+     ENVIRONMENT: str = "development"
+ 
+     # API Configuration
+     API_HOST: str = "0.0.0.0"
+     API_PORT: int = 8000
+     API_URL: str = "http://localhost:8000"
+ 
+     # CORS Configuration - accepts string or list
+     CORS_ORIGINS: Union[str, List[str]] = "chrome-extension://*,http://localhost:5173,http://localhost:3000"
+ 
+     # Open Resume Service Configuration
+     OPEN_RESUME_URL: str = "http://localhost:3001"
+     OPEN_RESUME_API_TIMEOUT: int = 30
++    OPEN_RESUME_FONT_FAMILY: str = "Open Sans"
++    OPEN_RESUME_FONT_SIZE: int = 11
++    OPEN_RESUME_THEME_COLOR: str = ""
++    OPEN_RESUME_DOCUMENT_SIZE: str = "A4"
+ 
+     # Gemini AI Configuration (NEW google-genai package)
+     GEMINI_API_KEY: str = ""
+     GEMINI_MODEL: str = "gemini-2.5-flash-exp"  # Updated to latest model
+     GEMINI_TEMPERATURE: float = 0.7
+     GEMINI_MAX_TOKENS: int = 16384  # Increased for better responses
+     GEMINI_TIMEOUT: int = 30
+     GEMINI_RETRY_ATTEMPTS: int = 3
+     GEMINI_RETRY_DELAY: float = 1.0  # seconds
+ 
+     # Logging Configuration
+     LOG_LEVEL: str = "INFO"
+     LOG_FORMAT: str = "console"
+ 
+     # Request Configuration
+     REQUEST_TIMEOUT: int = 60
+     MAX_RESUME_SIZE: int = 5 * 1024 * 1024
+ 
+     class Config:
+         env_file = ".env"
+         env_file_encoding = "utf-8"
+         case_sensitive = True
+ 
+     def get_cors_origins(self) -> List[str]:
+         """Convert CORS_ORIGINS to list if it's a string"""
+diff --git a/backend/src/services/pdf_client.py b/backend/src/services/pdf_client.py
+index af9dd3d52dfbd1fd0046454c7e34a890b3ae3df1..bc1bf66ef95d211754c01088eafdbd58d6948fc5 100644
+--- a/backend/src/services/pdf_client.py
++++ b/backend/src/services/pdf_client.py
+@@ -1,75 +1,177 @@
+ """
+ PDF Client Service for Open Resume integration
+ Handles communication with Open Resume service for PDF generation
+ """
+ 
+ import httpx
+-from typing import Optional
++from typing import Optional, List, Dict, Any
+ import time
+-import json
++import re
+ 
+ from app.config import settings
+ from utils.logger import logger, log_error
+ from models.resume import Resume
+ 
+ 
+ class PDFClientService:
+     """Service for generating PDFs via Open Resume"""
+ 
+     def __init__(self):
+         """Initialize PDF client"""
+         self.base_url = settings.OPEN_RESUME_URL
+         self.timeout = settings.OPEN_RESUME_API_TIMEOUT
+ 
+         logger.info(f"✅ PDF Client initialized (Open Resume: {self.base_url})")
+ 
++    @staticmethod
++    def _format_date_range(start: Optional[str], end: Optional[str]) -> str:
++        if start and end:
++            return start if start == end else f"{start} - {end}"
++        return start or end or ""
++
++    @staticmethod
++    def _split_description_to_bullets(description: Optional[str]) -> List[str]:
++        if not description:
++            return []
++        primary_parts = [
++            part.strip()
++            for part in re.split(r"(?:\r?\n|•|\u2022|;)", description)
++            if part.strip()
++        ]
++        if len(primary_parts) > 1:
++            return primary_parts
++
++        sentence_parts = [
++            part.strip()
++            for part in re.split(r"(?<=[.!?])\s+", description)
++            if part.strip()
++        ]
++        return sentence_parts or primary_parts
++
++    def _to_open_resume_payload(self, resume: Resume) -> Dict[str, Any]:
++        profile = resume.personalInfo
++        open_profile = {
++            "name": profile.name,
++            "summary": profile.summary or "",
++            "email": profile.email,
++            "phone": profile.phone or "",
++            "location": profile.location or "",
++            "url": profile.linkedin or profile.website or "",
++            "portfolio": profile.website or "",
++            "github": profile.github or "",
++        }
++
++        work_experiences = [
++            {
++                "company": exp.company,
++                "jobTitle": exp.position,
++                "date": self._format_date_range(exp.startDate, exp.endDate),
++                "descriptions": exp.description,
++            }
++            for exp in resume.experience
++        ]
++
++        educations = [
++            {
++                "school": edu.institution,
++                "degree": edu.degree if not edu.field else f"{edu.degree} in {edu.field}",
++                "date": self._format_date_range(edu.startDate, edu.endDate),
++                "gpa": edu.gpa,
++                "descriptions": edu.achievements,
++            }
++            for edu in resume.education
++        ]
++
++        projects = []
++        for project in resume.projects:
++            descriptions = (
++                project.highlights
++                if project.highlights
++                else self._split_description_to_bullets(project.description)
++            )
++            projects.append(
++                {
++                    "project": project.name,
++                    "date": self._format_date_range(
++                        project.startDate, project.endDate
++                    ),
++                    "descriptions": descriptions,
++                    "url": project.link or "",
++                }
++            )
++
++        skills_list = resume.skills
++        skills_description = ", ".join(skills_list) if skills_list else ""
++
++        return {
++            "resume": {
++                "profile": open_profile,
++                "workExperiences": work_experiences,
++                "educations": educations,
++                "projects": projects,
++                "skills": {
++                    "featuredSkills": [],
++                    "descriptions": [skills_description]
++                    if skills_description
++                    else [],
++                },
++                "custom": {"descriptions": []},
++            },
++            "settings": {
++                "fontFamily": settings.OPEN_RESUME_FONT_FAMILY,
++                "fontSize": settings.OPEN_RESUME_FONT_SIZE,
++                "themeColor": settings.OPEN_RESUME_THEME_COLOR,
++                "documentSize": settings.OPEN_RESUME_DOCUMENT_SIZE,
++            },
++        }
++
+     async def generate_pdf(self, resume: Resume) -> Optional[bytes]:
+         """
+         Generate PDF from resume using Open Resume service
+ 
+         Args:
+             resume: Resume object to convert to PDF
+ 
+         Returns:
+             PDF bytes or None if failed
+         """
+         try:
+             start_time = time.time()
+ 
+             logger.info(f"📄 Generating PDF for: {resume.personalInfo.name}")
+             logger.info(f"   Resume ID: {resume.id}")
+ 
+             # Convert resume to JSON-friendly dict (ensure datetime serialization)
+             # Using Pydantic's JSON encoding to handle datetimes and other types
+-            resume_data = json.loads(resume.model_dump_json())
++            payload = self._to_open_resume_payload(resume)
+ 
+             # Call Open Resume API
+             async with httpx.AsyncClient(timeout=self.timeout) as client:
+                 response = await client.post(
+                     f"{self.base_url}/api/generate-pdf",
+-                    json={"resume": resume_data},
++                    json=payload,
+                     headers={"Content-Type": "application/json"},
+                 )
+ 
+                 duration_ms = (time.time() - start_time) * 1000
+ 
+                 if response.status_code == 200:
+                     pdf_bytes = response.content
+                     pdf_size_kb = len(pdf_bytes) / 1024
+ 
+                     logger.info(
+                         f"✅ PDF generated successfully in {duration_ms:.2f}ms"
+                     )
+                     logger.info(f"   Size: {pdf_size_kb:.2f} KB")
+ 
+                     return pdf_bytes
+                 else:
+                     logger.error(
+                         f"❌ Open Resume returned error: {response.status_code}"
+                     )
+                     logger.error(f"   Response: {response.text[:200]}")
+                     return None
+ 
+         except httpx.TimeoutException as e:
+             logger.error(f"❌ PDF generation timeout after {self.timeout}s")
+             log_error(
+diff --git a/backend/tests/conftest.py b/backend/tests/conftest.py
+index 4a593578c596bc3eb57a9939c51a57ed1ed9df2a..7a364f016c0919b4136addcdafb00b23a28cdd62 100644
+--- a/backend/tests/conftest.py
++++ b/backend/tests/conftest.py
+@@ -158,50 +158,54 @@ def sample_job_description():
+     - Strong understanding of microservices architecture
+     - Experience with Docker and containerization
+     - Excellent problem-solving and communication skills
+     - Bachelor's degree in Computer Science or related field
+ 
+     Responsibilities:
+     - Design and implement scalable microservices
+     - Lead technical architecture decisions
+     - Mentor junior engineers
+     - Collaborate with cross-functional teams
+     - Optimize application performance
+ 
+     Nice to have:
+     - AWS or cloud platform experience
+     - Experience with CI/CD pipelines
+     - Open source contributions
+     """
+ 
+ 
+ @pytest.fixture(autouse=True)
+ def env_setup(monkeypatch):
+     """Set up test environment variables"""
+     monkeypatch.setenv("ENVIRONMENT", "testing")
+     monkeypatch.setenv("GEMINI_API_KEY", "test-key-12345678901234567890123456789012")
+     monkeypatch.setenv("OPEN_RESUME_URL", "http://localhost:3000")
++    monkeypatch.setenv("OPEN_RESUME_FONT_FAMILY", "Open Sans")
++    monkeypatch.setenv("OPEN_RESUME_FONT_SIZE", "11")
++    monkeypatch.setenv("OPEN_RESUME_THEME_COLOR", "#000000")
++    monkeypatch.setenv("OPEN_RESUME_DOCUMENT_SIZE", "A4")
+     monkeypatch.setenv("LOG_LEVEL", "ERROR")  # Reduce logging in tests
+ 
+ 
+ @pytest.fixture
+ def mock_gemini_response(sample_resume):
+     """Mock successful Gemini API response"""
+     tailored_resume = sample_resume.model_copy(deep=True)
+     # Simulate AI enhancements
+     tailored_resume.personalInfo.summary = "Experienced Full Stack Engineer with 5+ years in Python and React development"
+     
+     return {
+         "tailoredResume": json.loads(tailored_resume.model_dump_json()),
+         "matchedKeywords": ["Python", "React", "Docker", "FastAPI", "TypeScript"],
+         "missingKeywords": ["AWS", "PostgreSQL"],
+         "suggestions": [
+             "Add AWS certification to strengthen cloud expertise",
+             "Quantify achievements with specific metrics",
+             "Highlight leadership experience more prominently",
+         ],
+         "changes": [
+             "Enhanced professional summary to match job requirements",
+             "Incorporated 5 key technical skills from job description",
+             "Optimized 3 bullet points in work experience",
+         ],
+     }
+diff --git a/backend/tests/test_pdf_client_settings.py b/backend/tests/test_pdf_client_settings.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a4d33c1f2db383d068d04cb2dd9c078c3f472fbc
+--- /dev/null
++++ b/backend/tests/test_pdf_client_settings.py
+@@ -0,0 +1,24 @@
++"""
++Tests for Open Resume PDF client settings mapping.
++"""
++
++from app.config import settings
++from services.pdf_client import PDFClientService
++
++
++def test_pdf_payload_includes_open_resume_settings(sample_resume):
++    settings.OPEN_RESUME_FONT_FAMILY = "Roboto"
++    settings.OPEN_RESUME_FONT_SIZE = 10
++    settings.OPEN_RESUME_THEME_COLOR = "#112233"
++    settings.OPEN_RESUME_DOCUMENT_SIZE = "LEGAL"
++
++    client = PDFClientService()
++    payload = client._to_open_resume_payload(sample_resume)
++
++    assert payload["settings"] == {
++        "fontFamily": "Roboto",
++        "fontSize": 10,
++        "themeColor": "#112233",
++        "documentSize": "LEGAL",
++    }
++    assert payload["resume"]["profile"]["name"] == sample_resume.personalInfo.name
+diff --git a/open-resume-service/src/app/api/generate-pdf/route.ts b/open-resume-service/src/app/api/generate-pdf/route.ts
+index 4d48e498f15ed31e2d17dccaab192f7f392e0ef4..5094d538933e7d41341b37c6589f797e62f7614e 100644
+--- a/open-resume-service/src/app/api/generate-pdf/route.ts
++++ b/open-resume-service/src/app/api/generate-pdf/route.ts
+@@ -1,50 +1,50 @@
+ import { NextRequest, NextResponse } from "next/server";
+ 
+ /**
+  * POST /api/generate-pdf
+  * Generate a PDF from resume JSON using open-resume internals
+  */
+ export async function POST(request: NextRequest) {
+   try {
+     // Parse request body
+     const body = await request.json();
+-    const { resume, template = "default" } = body;
++    const { resume, template = "default", settings } = body;
+ 
+     if (!resume) {
+       return NextResponse.json(
+         { error: "Resume data is required" },
+         { status: 400 }
+       );
+     }
+ 
+     // Import the PDF generation utility
+     // This uses the same rendering as the web interface
+     const { generatePDF } = await import("../../../lib/resume-pdf-generator");
+ 
+     // Generate PDF
+-    const pdfBuffer = await generatePDF(resume, template);
++    const pdfBuffer = await generatePDF(resume, template, settings);
+ 
+     // Return PDF as binary response
+     return new NextResponse(pdfBuffer, {
+       status: 200,
+       headers: {
+         "Content-Type": "application/pdf",
+         "Content-Disposition": 'attachment; filename="resume.pdf"',
+         "Content-Length": pdfBuffer.length.toString(),
+       },
+     });
+   } catch (error) {
+     console.error("PDF generation error:", error);
+ 
+     const message =
+       error instanceof Error ? error.message : "Unknown error occurred";
+ 
+     return NextResponse.json(
+       {
+         error: "Failed to generate PDF",
+         message: message,
+         details: process.env.NODE_ENV === "development" ? String(error) : undefined,
+       },
+       { status: 500 }
+     );
+   }
+diff --git a/open-resume-service/src/app/components/Resume/ResumePDF/index.tsx b/open-resume-service/src/app/components/Resume/ResumePDF/index.tsx
+index 3cfa89a90f10fd7ddd244df582be2da67dbcacce..c0d6f08aeb0ef4878a55883d45c6e9f3008e0cf7 100644
+--- a/open-resume-service/src/app/components/Resume/ResumePDF/index.tsx
++++ b/open-resume-service/src/app/components/Resume/ResumePDF/index.tsx
+@@ -75,51 +75,57 @@ export const ResumePDF = ({
+         isPDF={isPDF}
+       />
+     ),
+     skills: () => (
+       <ResumePDFSkills
+         heading={formToHeading["skills"]}
+         skills={skills}
+         themeColor={themeColor}
+         showBulletPoints={showBulletPoints["skills"]}
+       />
+     ),
+     custom: () => (
+       <ResumePDFCustom
+         heading={formToHeading["custom"]}
+         custom={custom}
+         themeColor={themeColor}
+         showBulletPoints={showBulletPoints["custom"]}
+       />
+     ),
+   };
+ 
+   return (
+     <>
+       <Document title={`${name} Resume`} author={name} producer={"OpenResume"}>
+         <Page
+-          size={documentSize === "A4" ? "A4" : "LETTER"}
++          size={
++            documentSize === "A4"
++              ? "A4"
++              : documentSize === "LEGAL"
++                ? "LEGAL"
++                : "LETTER"
++          }
+           style={{
+             ...styles.flexCol,
+             color: DEFAULT_FONT_COLOR,
+             fontFamily,
+             fontSize: fontSize + "pt",
+           }}
+         >
+           {Boolean(settings.themeColor) && (
+             <View
+               style={{
+                 width: spacing["full"],
+                 height: spacing[3.5],
+                 backgroundColor: themeColor,
+               }}
+             />
+           )}
+           <View
+             style={{
+               ...styles.flexCol,
+               padding: `${spacing[0]} ${spacing[5]}`,
+             }}
+           >
+             <ResumePDFProfile
+               profile={profile}
+               themeColor={themeColor}
+diff --git a/open-resume-service/src/app/lib/constants.ts b/open-resume-service/src/app/lib/constants.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ea5e352f3a2e968edce770d0b958af9683830f9b
+--- /dev/null
++++ b/open-resume-service/src/app/lib/constants.ts
+@@ -0,0 +1,7 @@
++export const DEBUG_RESUME_PDF_FLAG = false;
++
++export const PX_PER_PT = 1.3333;
++export const A4_WIDTH_PX = 794;
++export const A4_HEIGHT_PX = 1123;
++export const LETTER_WIDTH_PX = 816;
++export const LETTER_HEIGHT_PX = 1056;
+diff --git a/open-resume-service/src/app/lib/redux/settingsSlice.ts b/open-resume-service/src/app/lib/redux/settingsSlice.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d4d60a8a1806c34d399c04e06c0e9ed508790c8f
+--- /dev/null
++++ b/open-resume-service/src/app/lib/redux/settingsSlice.ts
+@@ -0,0 +1,58 @@
++export const DEFAULT_FONT_COLOR = "#000000";
++
++export type ShowForm =
++  | "workExperiences"
++  | "educations"
++  | "projects"
++  | "skills"
++  | "custom";
++
++export type GeneralSetting = "fontFamily" | "fontSize" | "documentSize" | "themeColor";
++
++export type Settings = {
++  fontFamily: string;
++  fontSize: number;
++  documentSize: "A4" | "LETTER" | "LEGAL";
++  themeColor?: string;
++  formToHeading: Record<ShowForm, string>;
++  formToShow: Record<ShowForm, boolean>;
++  formsOrder: ShowForm[];
++  showBulletPoints: Record<ShowForm, boolean>;
++};
++
++export const initialSettings: Settings = {
++  fontFamily: "Open Sans",
++  fontSize: 11,
++  documentSize: "A4",
++  themeColor: "",
++  formToHeading: {
++    workExperiences: "WORK EXPERIENCE",
++    educations: "EDUCATION",
++    projects: "PROJECTS",
++    skills: "SKILLS",
++    custom: "CUSTOM",
++  },
++  formToShow: {
++    workExperiences: true,
++    educations: true,
++    projects: true,
++    skills: true,
++    custom: true,
++  },
++  formsOrder: ["workExperiences", "educations", "projects", "skills", "custom"],
++  showBulletPoints: {
++    workExperiences: true,
++    educations: true,
++    projects: true,
++    skills: true,
++    custom: true,
++  },
++};
++
++export const selectSettings = (state: { settings: Settings }) => state.settings;
++export const selectFormsOrder = (state: { settings: Settings }) => state.settings.formsOrder;
++export const selectShowForm = (state: { settings: Settings }, form: ShowForm) =>
++  state.settings.formToShow[form];
++
++export const changeSettings = () => ({ type: "settings/changeSettings" });
++export const changeShowForm = () => ({ type: "settings/changeShowForm" });
+diff --git a/open-resume-service/src/app/lib/redux/types.ts b/open-resume-service/src/app/lib/redux/types.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..059b281ebfc82bf870ae9631449333d790d5eab4
+--- /dev/null
++++ b/open-resume-service/src/app/lib/redux/types.ts
+@@ -0,0 +1,50 @@
++export type ResumeProfile = {
++  name: string;
++  summary?: string;
++  email?: string;
++  phone?: string;
++  location?: string;
++  url?: string;
++  portfolio?: string;
++  github?: string;
++};
++
++export type ResumeWorkExperience = {
++  company: string;
++  jobTitle: string;
++  date?: string;
++  descriptions: string[];
++};
++
++export type ResumeEducation = {
++  school: string;
++  degree: string;
++  date?: string;
++  gpa?: string;
++  descriptions?: string[];
++};
++
++export type ResumeProject = {
++  project: string;
++  date?: string;
++  descriptions: string[];
++  url?: string;
++};
++
++export type ResumeSkills = {
++  featuredSkills: { skill: string; rating: number }[];
++  descriptions: string[];
++};
++
++export type ResumeCustom = {
++  descriptions: string[];
++};
++
++export type Resume = {
++  profile: ResumeProfile;
++  workExperiences: ResumeWorkExperience[];
++  educations: ResumeEducation[];
++  projects: ResumeProject[];
++  skills: ResumeSkills;
++  custom: ResumeCustom;
++};
+diff --git a/open-resume-service/src/app/lib/resume-pdf-generator.test.ts b/open-resume-service/src/app/lib/resume-pdf-generator.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..fb441bd3948fa4ba43220156418712486b14a439
+--- /dev/null
++++ b/open-resume-service/src/app/lib/resume-pdf-generator.test.ts
+@@ -0,0 +1,64 @@
++/**
++ * @jest-environment node
++ */
++import { generatePDF } from "lib/resume-pdf-generator";
++import type { Resume } from "lib/redux/types";
++
++const sampleResume: Resume = {
++  profile: {
++    name: "Jane Doe",
++    email: "jane@example.com",
++    phone: "555-0101",
++    location: "Remote",
++    url: "linkedin.com/in/janedoe",
++    portfolio: "janedoe.dev",
++    github: "github.com/janedoe",
++    summary: "Backend engineer focused on scalable services.",
++  },
++  workExperiences: [
++    {
++      company: "Acme",
++      jobTitle: "Senior Engineer",
++      date: "2021 - Present",
++      descriptions: ["Built APIs used by 1M users."],
++    },
++  ],
++  educations: [
++    {
++      school: "State University",
++      degree: "B.S. Computer Science",
++      date: "2016 - 2020",
++      gpa: "3.8",
++      descriptions: ["Graduated with honors."],
++    },
++  ],
++  projects: [
++    {
++      project: "Resume Builder",
++      date: "2023",
++      descriptions: ["Implemented PDF rendering pipeline."],
++      url: "https://github.com/janedoe/resume-builder",
++    },
++  ],
++  skills: {
++    featuredSkills: [{ skill: "Python", rating: 4 }],
++    descriptions: ["Python, FastAPI, Postgres"],
++  },
++  custom: {
++    descriptions: [],
++  },
++};
++
++describe("generatePDF", () => {
++  it("renders a PDF buffer with settings overrides", async () => {
++    const pdfBuffer = await generatePDF(sampleResume, "default", {
++      fontFamily: "Open Sans",
++      fontSize: 10,
++      documentSize: "LEGAL",
++      themeColor: "#111111",
++    });
++
++    expect(pdfBuffer).toBeInstanceOf(Buffer);
++    expect(pdfBuffer.length).toBeGreaterThan(0);
++  });
++});
+diff --git a/open-resume-service/src/app/lib/resume-pdf-generator.tsx b/open-resume-service/src/app/lib/resume-pdf-generator.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..732952f43335aa8b40efb5994e1d722752f3c066
+--- /dev/null
++++ b/open-resume-service/src/app/lib/resume-pdf-generator.tsx
+@@ -0,0 +1,60 @@
++import path from "path";
++import { renderToBuffer, Font } from "@react-pdf/renderer";
++import { ResumePDF } from "components/Resume/ResumePDF";
++import { initialSettings, type Settings } from "lib/redux/settingsSlice";
++import type { Resume } from "lib/redux/types";
++
++type GeneratePDFSettings = Partial<Settings>;
++
++const FONT_FILES: Record<string, { regular: string; bold: string }> = {
++  "Open Sans": {
++    regular: "OpenSans-Regular.ttf",
++    bold: "OpenSans-Bold.ttf",
++  },
++  Roboto: {
++    regular: "Roboto-Regular.ttf",
++    bold: "Roboto-Bold.ttf",
++  },
++  Lato: {
++    regular: "Lato-Regular.ttf",
++    bold: "Lato-Bold.ttf",
++  },
++};
++
++const registerFontFamily = (fontFamily: string) => {
++  const files = FONT_FILES[fontFamily];
++  if (!files) {
++    return;
++  }
++  const fontsDir = path.join(process.cwd(), "public", "fonts");
++  Font.register({
++    family: fontFamily,
++    fonts: [
++      { src: path.join(fontsDir, files.regular), fontWeight: "normal" },
++      { src: path.join(fontsDir, files.bold), fontWeight: "bold" },
++    ],
++  });
++};
++
++const buildSettings = (settings?: GeneratePDFSettings): Settings => ({
++  ...initialSettings,
++  ...settings,
++});
++
++export const generatePDF = async (
++  resume: Resume,
++  template = "default",
++  settings?: GeneratePDFSettings
++) => {
++  if (template !== "default") {
++    throw new Error(`Unsupported template: ${template}`);
++  }
++
++  const mergedSettings = buildSettings(settings);
++  registerFontFamily(mergedSettings.fontFamily);
++  const document = (
++    <ResumePDF resume={resume} settings={mergedSettings} isPDF={true} />
++  );
++
++  return renderToBuffer(document);
++};

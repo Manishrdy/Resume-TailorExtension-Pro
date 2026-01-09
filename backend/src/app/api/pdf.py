@@ -31,29 +31,6 @@ router = APIRouter()
     },
 )
 async def generate_pdf(request: GeneratePDFRequest):
-    """
-    Generate ATS-friendly PDF from resume data
-    
-    This endpoint:
-    1. Validates the resume data
-    2. Sends it to Open Resume service
-    3. Returns the generated PDF as a downloadable file
-    
-    **Important Notes:**
-    - All information (company names, dates, titles) is preserved exactly
-    - ATS-friendly formatting is maintained
-    - Processing time: 2-5 seconds
-    - Requires Open Resume service running
-    
-    **Request Body:**
-    - resume: Complete resume object (required)
-    - template: PDF template to use (optional, default: "default")
-    
-    **Response:**
-    - Content-Type: application/pdf
-    - Content-Disposition: attachment with filename
-    - Body: PDF binary data
-    """
     try:
         logger.info("=" * 80)
         logger.info(f"📄 PDF generation request received")
