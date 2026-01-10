@@ -15,10 +15,26 @@ def test_pdf_payload_includes_open_resume_settings(sample_resume):
     client = PDFClientService()
     payload = client._to_open_resume_payload(sample_resume)
 
-    assert payload["settings"] == {
-        "fontFamily": "Roboto",
-        "fontSize": 10,
-        "themeColor": "#112233",
-        "documentSize": "LEGAL",
-    }
+    # Verify settings structure
+    assert payload["settings"]["fontFamily"] == "Roboto"
+    assert payload["settings"]["fontSize"] == 10
+    assert payload["settings"]["themeColor"] == "#112233"
+    assert payload["settings"]["documentSize"] == "LEGAL"
+
+    # Verify new settings properties
+    assert "formToHeading" in payload["settings"]
+    assert "formToShow" in payload["settings"]
+    assert "formsOrder" in payload["settings"]
+    assert "showBulletPoints" in payload["settings"]
+
+    # Verify resume structure matches Open Resume format
     assert payload["resume"]["profile"]["name"] == sample_resume.personalInfo.name
+    assert "workExperiences" in payload["resume"]
+    assert "educations" in payload["resume"]
+    assert "skills" in payload["resume"]
+    assert "projects" in payload["resume"]
+    assert "custom" in payload["resume"]
+
+    # Verify skills structure
+    assert "featuredSkills" in payload["resume"]["skills"]
+    assert "descriptions" in payload["resume"]["skills"]

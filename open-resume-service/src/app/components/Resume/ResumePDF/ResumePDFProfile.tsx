@@ -79,13 +79,13 @@ export const ResumePDFProfile = ({
               {/* 2. Separator Logic: Add dot before item if it is NOT the first item */}
               {index > 0 && (
                 <View style={{ marginLeft: spacing["2"], marginRight: spacing["2"] }}>
-                  <ResumePDFText>•</ResumePDFText>
+                  <ResumePDFText style={{ fontSize: "9pt" }}>•</ResumePDFText>
                 </View>
               )}
 
               {/* 3. Render Value (No Icon) */}
               <Wrapper>
-                <ResumePDFText>{value}</ResumePDFText>
+                <ResumePDFText style={{ fontSize: "9pt" }}>{value}</ResumePDFText>
               </Wrapper>
             </View>
           );
