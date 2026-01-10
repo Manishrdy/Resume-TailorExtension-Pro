@@ -67,6 +67,7 @@ export const ResumePDFText = ({
       style={{
         color: themeColor || DEFAULT_FONT_COLOR,
         fontWeight: bold ? "bold" : "normal",
+        lineHeight: 1,
         ...style,
       }}
       debug={DEBUG_RESUME_PDF_FLAG}
@@ -86,13 +87,12 @@ export const ResumePDFBulletList = ({
   return (
     <>
       {items.map((item, idx) => (
-        <View style={{ ...styles.flexRow }} key={idx}>
+        <View style={{ ...styles.flexRow, marginTop: 0 }} key={idx}>
           {showBulletPoints && (
             <ResumePDFText
               style={{
                 paddingLeft: spacing["2"],
                 paddingRight: spacing["2"],
-                lineHeight: "1.3",
               }}
               bold={true}
             >
@@ -102,7 +102,7 @@ export const ResumePDFBulletList = ({
           {/* A breaking change was introduced causing text layout to be wider than node's width
               https://github.com/diegomura/react-pdf/issues/2182. flexGrow & flexBasis fixes it */}
           <ResumePDFText
-            style={{ lineHeight: "1.3", flexGrow: 1, flexBasis: 0 }}
+            style={{ flexGrow: 1, flexBasis: 0 }}
           >
             {item}
           </ResumePDFText>
@@ -166,7 +166,7 @@ export const ResumeFeaturedSkill = ({
             width: "9pt",
             marginLeft: "2.25pt",
             backgroundColor: rating >= idx ? themeColor : "#d9d9d9",
-            borderRadius: "100%",
+            borderRadius: "4.5pt",
           }}
         />
       ))}

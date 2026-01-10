@@ -1,9 +1,13 @@
-"use server";
-
 import path from "path";
-import React from "react";
+// Import React with full API including Component class
+import * as React from "react";
 import type { Settings } from "lib/redux/settingsSlice";
 import type { Resume } from "lib/redux/types";
+
+// Ensure React.Component is available - critical for @react-pdf/renderer
+if (typeof React.Component === 'undefined') {
+  console.error('CRITICAL: React.Component is undefined - PDF generation will fail');
+}
 
 type GeneratePDFSettings = Partial<Settings>;
 
@@ -80,11 +84,15 @@ export const generatePDFBuffer = async (
     // Import here to ensure it runs in Node.js environment
     const { renderToBuffer } = await import("@react-pdf/renderer");
     const { initialSettings } = await import("lib/redux/settingsSlice");
+    const { getDefaultPDFSettings } = await import("lib/pdf-config");
     const { ResumePDF } = await import("components/Resume/ResumePDF");
 
-    // Build final settings
+    // Build final settings with environment variable overrides
+    // Priority: settings parameter > environment variables > initialSettings
+    const envSettings = getDefaultPDFSettings();
     const mergedSettings = {
       ...initialSettings,
+      ...envSettings,
       ...settings,
     };
 

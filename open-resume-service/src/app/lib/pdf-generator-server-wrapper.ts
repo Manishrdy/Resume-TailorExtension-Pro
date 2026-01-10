@@ -1,7 +1,5 @@
 /**
  * This file ensures @react-pdf/renderer is only imported server-side
- * Adding "use server" prevents this module from being bundled on the client
+ * Re-exports the PDF generation function for use in API routes
  */
-"use server";
-
 export { generatePDFBuffer } from "./pdf-generator-server";

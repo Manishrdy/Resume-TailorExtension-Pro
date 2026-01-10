@@ -42,39 +42,64 @@ class PDFClientService:
         return text.strip()
 
     @staticmethod
+    def _clean_url(url: str) -> str:
+        """Remove https://, http://, and www. from URLs for cleaner display."""
+        if not url:
+            return ""
+        # Remove protocol
+        cleaned = re.sub(r"^https?://", "", url)
+        # Remove www.
+        cleaned = re.sub(r"^www\.", "", cleaned)
+        # Remove trailing slash
+        cleaned = cleaned.rstrip("/")
+        return cleaned
+
+    @staticmethod
     def _categorize_skills(skills: List[str]) -> Dict[str, List[str]]:
-        """Intelligently categorize skills into groups."""
-        # Define skill categories with keywords
+        """Intelligently categorize skills into groups with strict matching."""
+        # Define skill categories - checked in order, first match wins
         categories = {
             "Programming Languages": [
                 "python", "javascript", "typescript", "java", "c#", "c++", "go",
-                "rust", "ruby", "php", "swift", "kotlin", "scala", "r", "julia"
+                "rust", "ruby", "php", "swift", "kotlin", "scala", "r", "julia", "c", "sql"
             ],
             "Frontend Frameworks": [
-                "react", "vue", "angular", "svelte", "next.js", "nuxt", "gatsby",
-                "redux", "mobx", "jquery", "tailwind", "bootstrap", "material-ui"
+                "react.js", "react", "vue.js", "vue", "angular.js", "angular", "svelte",
+                "next.js", "nuxt", "gatsby", "redux", "mobx", "jquery"
             ],
             "Backend Frameworks": [
-                "node.js", "express", "fastapi", "flask", "django", "spring", "spring boot",
-                ".net", "asp.net", "laravel", "rails", "gin", "fiber"
+                "spring boot", "spring", "node.js", "express.js", "express", "fastapi",
+                "flask", "django", ".net", "asp.net", "laravel", "rails"
             ],
             "Databases & Messaging": [
                 "postgresql", "mysql", "mongodb", "redis", "cassandra", "dynamodb",
-                "elasticsearch", "kafka", "rabbitmq", "sql server", "oracle", "sqlite"
+                "elasticsearch", "apache kafka", "kafka", "rabbitmq", "oracle"
             ],
             "Cloud & DevOps": [
-                "aws", "azure", "gcp", "docker", "kubernetes", "terraform", "ansible",
-                "jenkins", "github actions", "gitlab ci", "circleci", "travis ci",
-                "cloudwatch", "ec2", "s3", "lambda", "ecs", "eks"
+                "aws", "azure", "gcp", "google cloud", "ec2", "s3", "cloudwatch",
+                "docker", "kubernetes", "terraform", "jenkins", "github actions",
+                "circle ci", "circleci", "travis ci", "ci/cd", "maven", "dynatrace"
             ],
             "AI & Machine Learning": [
-                "llm", "gpt", "gemini", "openai", "langchain", "hugging face",
-                "tensorflow", "pytorch", "scikit-learn", "spacy", "nltk",
-                "rag", "semantic search", "fuzzy search", "vector database"
+                "llms", "llm", "langchain", "openai", "gpt", "gemini",
+                "rag pipeline", "rag", "semantic search", "fuzzy search",
+                "spacy", "tensorflow", "pytorch"
             ],
-            "Tools & APIs": [
-                "rest", "graphql", "grpc", "oauth", "jwt", "sso", "git",
-                "postman", "swagger", "jira", "confluence", "slack"
+            "APIs & Web Services": [
+                "rest api", "rest", "soap web services", "soap", "graphql", "grpc",
+                "microsoft graph api", "web services"
+            ],
+            "Security & Auth": [
+                "oauth 2.0", "oauth", "sso", "jwt", "pii/phi data encryption",
+                "secure data transmission", "data privacy compliance"
+            ],
+            "Development Tools": [
+                "git", "junit", "mockito", "easymock", "test driven development",
+                "tdd", "postman", "swagger", "jira"
+            ],
+            "Data Processing": [
+                "apache spark", "spark", "apache flink", "flink", "kinesis",
+                "document parsing"
             ],
         }
 
@@ -85,10 +110,13 @@ class PDFClientService:
             skill_lower = skill.lower().strip()
             matched = False
 
+            # Check each category in order (first match wins)
             for category, keywords in categories.items():
-                for keyword in keywords:
-                    # Use exact word matching or containment check
-                    if keyword == skill_lower or keyword in skill_lower:
+                # Sort keywords by length (longest first) to match more specific terms first
+                sorted_keywords = sorted(keywords, key=len, reverse=True)
+                for keyword in sorted_keywords:
+                    # Exact match only to avoid false positives
+                    if skill_lower == keyword:
                         if category not in categorized:
                             categorized[category] = []
                         categorized[category].append(skill)
@@ -150,18 +178,19 @@ class PDFClientService:
         # Map our fields to Open Resume's expected fields
         # Open Resume shows: email, phone, location, url, portfolio, github
         # Priority: website -> url, linkedin -> portfolio (if no website), github -> github
+        # Clean URLs to remove https://www. for cleaner display
         if resume.personalInfo.website:
-            profile["url"] = resume.personalInfo.website
+            profile["url"] = self._clean_url(resume.personalInfo.website)
 
         if resume.personalInfo.linkedin:
             # If we have a website, put linkedin in portfolio, otherwise in url
             if resume.personalInfo.website:
-                profile["portfolio"] = resume.personalInfo.linkedin
+                profile["portfolio"] = self._clean_url(resume.personalInfo.linkedin)
             else:
-                profile["url"] = resume.personalInfo.linkedin
+                profile["url"] = self._clean_url(resume.personalInfo.linkedin)
 
         if resume.personalInfo.github:
-            profile["github"] = resume.personalInfo.github
+            profile["github"] = self._clean_url(resume.personalInfo.github)
 
         # Transform work experiences to Open Resume format
         work_experiences = []
@@ -213,26 +242,13 @@ class PDFClientService:
 
         # Transform skills to Open Resume format
         # Open Resume expects: { featuredSkills: [{skill, rating}], descriptions: [] }
-        # Strategy:
-        # 1. Take first 6 skills as featured with rating 4
-        # 2. Categorize remaining skills and format as bullet points
-        # NOTE: Featured skills must be exactly 6 items (can be empty strings)
-        featured_skills = []
+        # Strategy: Categorize ALL skills and format as inline text
+        # Format: "Category: skill1, skill2, skill3"
         skill_descriptions = []
 
-        # First 6 skills become featured skills with rating
-        # Always pad to 6 items (Open Resume component expects exactly 6)
-        for idx in range(6):
-            if idx < len(resume.skills):
-                featured_skills.append({"skill": resume.skills[idx], "rating": 4})
-            else:
-                # Pad with empty skill if fewer than 6 total skills
-                featured_skills.append({"skill": "", "rating": 4})
-
-        # Remaining skills get categorized and formatted
-        if len(resume.skills) > 6:
-            remaining_skills = resume.skills[6:]
-            categorized = self._categorize_skills(remaining_skills)
+        # Categorize all skills
+        if resume.skills:
+            categorized = self._categorize_skills(resume.skills)
 
             # Format each category as "Category: skill1, skill2, skill3"
             for category, category_skills in categorized.items():
@@ -240,8 +256,9 @@ class PDFClientService:
                     skills_str = ", ".join(category_skills)
                     skill_descriptions.append(f"{category}: {skills_str}")
 
+        # No featured skills - using categorized inline format only
         skills = {
-            "featuredSkills": featured_skills,
+            "featuredSkills": [],
             "descriptions": skill_descriptions,
         }
 

@@ -16,7 +16,7 @@ CRITICAL RULES:
 4. Maintain all factual information (dates, companies, titles, education)
 5. Keep the original structure and organization
 6. Return ONLY valid JSON - no markdown, no explanations, no preamble
-7. You MAY add at most 1-2 adjacent technologies **only if** they are strongly implied by the job description and are a reasonable extension of existing skills (e.g., add Redis if already using caching + databases). Do not add unrelated technologies.
+7. For skills: ONLY add skills that are (a) mentioned in JD AND (b) closely related to existing skills AND (c) not a major technology leap. Maximum 2-3 new skills. Do NOT add every skill from the job description.
 
 OUTPUT FORMAT:
 You must return a valid JSON object matching this exact structure:
@@ -72,8 +72,14 @@ def get_tailoring_prompt(minimal_resume: dict, job_description: str, candidate_n
         - Return in SAME ORDER as input
 
         4. **Skills**:
-        - Reorder by relevance (most relevant first)
-        - Add 1-2 missing adjacent technologies if strongly implied by JD
+        - Reorder EXISTING skills by relevance to job description (most relevant first)
+        - ONLY add skills that are:
+          a) Directly mentioned in the job description AND
+          b) Closely related to existing skills in the resume AND
+          c) Not a significant technology leap (e.g., if resume has Python, can add Flask but NOT Go)
+        - DO NOT add skills from job description that are unrelated to existing resume
+        - DO NOT add every skill from the job description
+        - Maximum 2-3 new skills ONLY if they meet ALL criteria above
         - Keep categorized format
 
         CRITICAL RULES:
