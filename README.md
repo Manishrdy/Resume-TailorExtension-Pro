@@ -5,8 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109.0-009688.svg?style=flat&logo=FastAPI&logoColor=white)](https://fastapi.tiangolo.com)
-[![Next.js](https://img.shields.io/badge/Next.js-13.5-black?logo=next.js)](https://nextjs.org/)
-[![Google Gemini](https://img.shields.io/badge/Gemini-2.0_Flash-blue?logo=google)](https://ai.google.dev/)
+[![ReportLab](https://img.shields.io/badge/ReportLab-4.0.9-green.svg)](https://www.reportlab.com/)
+[![Google Gemini](https://img.shields.io/badge/Gemini-2.5_Flash-blue?logo=google)](https://ai.google.dev/)
 
 ## Table of Contents
 
@@ -35,18 +35,20 @@
 
 ### What Makes Resume Tailor Unique?
 
-- **AI-Powered Optimization**: Leverages Google Gemini 2.0 Flash for intelligent resume tailoring
+- **AI-Powered Optimization**: Leverages Google Gemini 2.5 Flash for intelligent resume tailoring
 - **ATS Scoring**: Provides 0-100 compatibility scores with actionable insights
-- **Professional PDF Generation**: Creates ATS-friendly PDFs using the battle-tested Open Resume engine
+- **Professional Document Generation**: Creates ATS-friendly PDFs and DOCX files using self-contained Python module
+- **Multi-Format Support**: Export resumes in both PDF and DOCX formats
 - **Multi-Platform**: Chrome extension, REST API, and standalone web interface
 - **Privacy-First**: All data stored locally, no external tracking
 - **Production-Ready**: Docker support, comprehensive testing, and monitoring
+- **Zero External Dependencies**: No external services required for document generation
 
 ### System Components
 
-1. **FastAPI Backend** - REST API serving AI tailoring and PDF generation
+1. **FastAPI Backend** - REST API serving AI tailoring and document generation
 2. **Chrome Extension** - Browser-based UI with job scraping capabilities
-3. **Open Resume Service** - Next.js application for PDF rendering
+3. **Document Generator** - Self-contained Python module for PDF/DOCX generation (ReportLab + python-docx)
 4. **Gemini AI Integration** - Intelligent resume optimization engine
 
 ---
@@ -63,13 +65,15 @@
 - ATS compatibility scoring (0-100)
 - Actionable improvement suggestions
 
-#### PDF Generation
-- ATS-friendly formatting
-- Multiple template support
-- Customizable fonts and colors
+#### Document Generation
+- **PDF Generation**: ATS-friendly PDFs using ReportLab
+- **DOCX Generation**: Editable Word documents using python-docx
+- Clean, professional single-column layout
+- Standard fonts optimized for ATS parsing
 - Preserves all factual information (dates, company names)
 - Intelligent skill categorization
-- Standard document sizes (A4, Letter, Legal)
+- Proper spacing and formatting for readability
+- Self-contained - no external services required
 
 #### Chrome Extension
 - Form-based resume builder
@@ -259,23 +263,6 @@ cd src
 uvicorn app.main:app --reload --port 8000
 ```
 
-#### Open Resume Service Installation
-
-```bash
-cd open-resume-service
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-# Service runs on http://localhost:3000
-
-# Or build for production
-npm run build
-npm run start
-```
-
 #### Chrome Extension Installation
 
 ```bash
@@ -341,11 +328,12 @@ MAX_RESUME_SIZE=5242880  # 5MB
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `GEMINI_API_KEY` | Google Gemini API key | - | Yes |
-| `OPEN_RESUME_URL` | URL of PDF service | http://localhost:3000 | Yes |
 | `API_PORT` | Backend API port | 8000 | No |
 | `LOG_LEVEL` | Logging level (DEBUG/INFO/WARNING/ERROR) | INFO | No |
-| `GEMINI_MODEL` | Gemini model version | gemini-2.0-flash-exp | No |
+| `GEMINI_MODEL` | Gemini model version | gemini-2.5-flash-exp | No |
 | `GEMINI_TEMPERATURE` | AI creativity level (0.0-1.0) | 0.7 | No |
+
+**Note**: `OPEN_RESUME_URL` is no longer required. Document generation now uses a self-contained Python module.
 
 ### Extension Configuration
 
@@ -1239,22 +1227,30 @@ You are free to:
 
 This project builds upon the excellent work of the open-source community:
 
-#### Open Resume
-This project uses [**Open Resume**](https://github.com/xitanggg/open-resume) by [xitanggg](https://github.com/xitanggg) as the PDF generation engine. Open Resume is an exceptional open-source resume builder and parser that provides:
-- Professional ATS-friendly templates
-- React-based PDF rendering
-- Customizable styling and fonts
-- Battle-tested resume formatting
+#### Document Generation
 
-**Huge credit and thanks to the Open Resume team for creating such a robust and well-designed system!** Without their work, the PDF generation capabilities of Resume Tailor would not be possible.
+This project uses industry-standard Python libraries for professional document generation:
 
-If you find Resume Tailor useful, please also star and support the [Open Resume repository](https://github.com/xitanggg/open-resume).
+**ReportLab** - Enterprise-grade PDF generation library trusted by major corporations worldwide
+- Professional ATS-friendly PDF templates
+- Precise control over layout and formatting
+- Production-ready and battle-tested
+- [ReportLab Website](https://www.reportlab.com/)
+
+**python-docx** - Official Python library for creating Word documents
+- Clean DOCX generation with full formatting support
+- Wide compatibility with Microsoft Word and alternatives
+- Active maintenance and excellent documentation
+- [python-docx Documentation](https://python-docx.readthedocs.io/)
+
+**Huge credit and thanks to the ReportLab and python-docx teams for their excellent open-source libraries!**
 
 #### Other Acknowledgments
 
 - **Google Gemini AI** - For providing the powerful AI engine that makes intelligent resume tailoring possible
 - **FastAPI** - For the excellent Python web framework
-- **Next.js** - For the React framework powering the PDF service
+- **ReportLab** - For the professional PDF generation library
+- **python-docx** - For the robust DOCX generation capabilities
 - **Loguru** - For beautiful logging
 - **pytest** - For comprehensive testing capabilities
 - **Chrome Extensions API** - For enabling browser integration
@@ -1264,10 +1260,8 @@ If you find Resume Tailor useful, please also star and support the [Open Resume 
 
 - [FastAPI](https://fastapi.tiangolo.com/) - Modern Python web framework
 - [Google Gemini](https://ai.google.dev/) - AI-powered resume optimization
-- [Open Resume](https://github.com/xitanggg/open-resume) - PDF generation engine
-- [Next.js](https://nextjs.org/) - React framework
-- [React](https://react.dev/) - UI library
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
+- [ReportLab](https://www.reportlab.com/) - PDF generation library
+- [python-docx](https://python-docx.readthedocs.io/) - DOCX generation library
 - [Pydantic](https://docs.pydantic.dev/) - Data validation
 - [Loguru](https://github.com/Delgan/loguru) - Python logging
 - [pytest](https://pytest.org/) - Testing framework

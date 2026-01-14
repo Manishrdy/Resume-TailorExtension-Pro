@@ -82,10 +82,35 @@ const api = {
         }
     },
 
-    // Download PDF
-    async downloadPDF(pdfBlob, filename) {
+    // Generate DOCX (NEW)
+    async generateDOCX(resume) {
         try {
-            const url = URL.createObjectURL(pdfBlob);
+            const response = await fetch(`${this.baseUrl}/api/generate-docx`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    resume: resume
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'DOCX generation failed');
+            }
+
+            return await response.blob();
+        } catch (error) {
+            console.error('DOCX API error:', error);
+            throw error;
+        }
+    },
+
+    // Download file (works for both PDF and DOCX)
+    async downloadFile(fileBlob, filename) {
+        try {
+            const url = URL.createObjectURL(fileBlob);
 
             await chrome.downloads.download({
                 url: url,
@@ -98,6 +123,11 @@ const api = {
             console.error('Download error:', error);
             throw error;
         }
+    },
+
+    // Legacy method for backward compatibility
+    async downloadPDF(pdfBlob, filename) {
+        return this.downloadFile(pdfBlob, filename);
     }
 };
 

@@ -50,6 +50,7 @@ const elements = {
     missingCount: document.getElementById('missing-count'),
     missingKeywords: document.getElementById('missing-keywords'),
     downloadPdfBtn: document.getElementById('download-pdf-btn'),
+    downloadDocxBtn: document.getElementById('download-docx-btn'),
     errorMsg: document.getElementById('error-msg'),
     successMsg: document.getElementById('success-msg'),
 
@@ -123,6 +124,7 @@ function setupEventListeners() {
     elements.jobDescription.addEventListener('input', updateTailorButton);
     elements.tailorBtn.addEventListener('click', handleTailor);
     elements.downloadPdfBtn.addEventListener('click', handleDownloadPdf);
+    elements.downloadDocxBtn.addEventListener('click', handleDownloadDocx);
 
     // Settings tab
     elements.saveSettingsBtn.addEventListener('click', handleSaveSettings);
@@ -1594,7 +1596,7 @@ async function handleDownloadPdf() {
 
     try {
         elements.downloadPdfBtn.disabled = true;
-        elements.downloadPdfBtn.textContent = '⏳ Generating PDF...';
+        elements.downloadPdfBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Generating PDF...</span>';
 
         const pdfBlob = await api.generatePDF(tailoredResume);
 
@@ -1622,7 +1624,48 @@ async function handleDownloadPdf() {
         showError(error.message || 'PDF generation failed');
     } finally {
         elements.downloadPdfBtn.disabled = false;
-        elements.downloadPdfBtn.textContent = '📄 Download Tailored PDF';
+        elements.downloadPdfBtn.innerHTML = '<span class="btn-icon">📄</span><span>Download PDF</span>';
+    }
+}
+
+// Handle Download DOCX (NEW)
+async function handleDownloadDocx() {
+    if (!tailoredResume) {
+        showError('No tailored resume available');
+        return;
+    }
+
+    try {
+        elements.downloadDocxBtn.disabled = true;
+        elements.downloadDocxBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Generating DOCX...</span>';
+
+        const docxBlob = await api.generateDOCX(tailoredResume);
+
+        const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+        const filename = `${currentResume.name.replace(/\s+/g, '_')}_${timestamp}.docx`;
+
+        await api.downloadFile(docxBlob, filename);
+
+        // Add to history
+        await storage.addToHistory({
+            id: crypto.randomUUID(),
+            resumeName: currentResume.name,
+            jobTitle: 'Job Application',
+            company: 'Company',
+            atsScore: parseInt(elements.atsScore.textContent),
+            timestamp: new Date().toISOString(),
+            filename: filename
+        });
+
+        await loadHistory();
+        showSuccess('DOCX downloaded!');
+
+    } catch (error) {
+        console.error('DOCX error:', error);
+        showError(error.message || 'DOCX generation failed');
+    } finally {
+        elements.downloadDocxBtn.disabled = false;
+        elements.downloadDocxBtn.innerHTML = '<span class="btn-icon">📝</span><span>Download DOCX</span>';
     }
 }
 

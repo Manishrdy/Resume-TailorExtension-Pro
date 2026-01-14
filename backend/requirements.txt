@@ -4,8 +4,12 @@ uvicorn[standard]==0.27.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
 
-# HTTP client for calling Open Resume service
+# HTTP client for calling Open Resume service (DEPRECATED - keeping for backward compatibility)
 httpx==0.26.0
+
+# Document generation - PDF and DOCX
+reportlab==4.0.9
+python-docx==1.1.0
 
 # Logging
 loguru==0.7.2
