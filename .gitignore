@@ -55,6 +55,10 @@ logs/
 *~
 .DS_Store
 
+# Claude Code
+.claude/
+.claude-worktrees/
+
 # Node.js (Open Resume)
 node_modules/
 .next/
