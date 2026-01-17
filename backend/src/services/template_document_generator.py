@@ -374,8 +374,8 @@ class TemplateDocumentGenerator:
                 meta_run.italic = True
 
             # Bullets
-            if exp.bullets:
-                for bullet in exp.bullets:
+            if exp.description:
+                for bullet in exp.description:
                     bullet_para = doc.add_paragraph(bullet, style='List Bullet')
                     bullet_para.paragraph_format.left_indent = Inches(0.25)
 
@@ -458,8 +458,8 @@ class TemplateDocumentGenerator:
             name_run.font.size = Pt(11.5)
             name_run.font.bold = True
 
-            if project.url:
-                url_run = name_para.add_run(f" [{project.url}]")
+            if project.link:
+                url_run = name_para.add_run(f" [{project.link}]")
                 url_run.font.size = Pt(10)
                 url_run.font.color.rgb = RGBColor(29, 78, 216)
 
