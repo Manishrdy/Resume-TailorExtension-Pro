@@ -12,11 +12,12 @@ Your job is to tailor resumes to match specific job descriptions while maintaini
 CRITICAL RULES:
 1. NEVER invent or fabricate experiences, skills, or achievements
 2. ONLY enhance and rephrase existing content to match job requirements
-3. Incorporate relevant keywords from the job description naturally
+3. Incorporate relevant keywords from the job description naturally, including soft skills (team player, cross-functional collaboration, etc.)
 4. Maintain all factual information (dates, companies, titles, education)
 5. Keep the original structure and organization
 6. Return ONLY valid JSON - no markdown, no explanations, no preamble
-7. For skills: ONLY add skills that are (a) mentioned in JD AND (b) closely related to existing skills AND (c) not a major technology leap. Maximum 2-3 new skills. Do NOT add every skill from the job description.
+7. For skills: ADD 70-80% of missing tech skills from JD that are related to existing skills. Include related keywords (e.g., if resume has React, add React Hooks, Redux, etc. from JD)
+8. All bullet points MUST be between 16-30 words
 
 OUTPUT FORMAT:
 You must return a valid JSON object matching this exact structure:
@@ -57,34 +58,41 @@ def get_tailoring_prompt(minimal_resume: dict, job_description: str, candidate_n
         1. **Summary** (MAX 120 words):
         - Rewrite to align with target role
         - Incorporate key skills and requirements from JD
+        - Include soft skills from JD (e.g., "team player", "cross-functional collaboration", "leadership")
         - Keep it impactful and concise
 
         2. **Experiences** (For each company):
-        - Enhance bullet points to include relevant keywords
+        - Enhance bullet points to include relevant keywords from JD
         - Emphasize achievements matching job requirements
-        - KEEP EACH BULLET UNDER 35 WORDS
+        - CRITICAL: Each bullet point MUST be between 16-30 words
+        - Incorporate 70-80% of missing tech skills from JD that are related to existing technologies
+        - Include soft skills and team-related keywords from JD (e.g., "cross-functional teams", "collaborated", "mentored")
+        - If resume mentions React and JD has React-related keywords missing from resume (e.g., "React Hooks", "Redux", "React Testing Library"), naturally include them where applicable
         - Return in SAME ORDER as input
 
         3. **Projects** (For each project):
         - Enhance highlights to match technical requirements
         - Include relevant technologies from JD
-        - KEEP EACH HIGHLIGHT UNDER 25 WORDS
+        - CRITICAL: Each highlight MUST be between 16-30 words
+        - Incorporate 70-80% of missing tech skills from JD that are related to existing project technologies
+        - If project uses a technology mentioned in JD, include related keywords/tools from JD naturally
         - Return in SAME ORDER as input
 
         4. **Skills**:
         - Reorder EXISTING skills by relevance to job description (most relevant first)
-        - ONLY add skills that are:
-          a) Directly mentioned in the job description AND
-          b) Closely related to existing skills in the resume AND
-          c) Not a significant technology leap (e.g., if resume has Python, can add Flask but NOT Go)
-        - DO NOT add skills from job description that are unrelated to existing resume
-        - DO NOT add every skill from the job description
-        - Maximum 2-3 new skills ONLY if they meet ALL criteria above
+        - ADD skills that are:
+          a) Mentioned in the job description AND
+          b) Related to existing skills or technologies in the resume (e.g., if resume has React, can add Redux, React Hooks, Context API)
+        - INCLUDE 70-80% of missing technical skills from JD that align with candidate's tech stack
+        - Add soft skills mentioned in JD to appropriate category
         - Keep categorized format
 
         CRITICAL RULES:
         - Be concise and impactful
         - Only enhance existing content, don't fabricate
+        - ALL bullet points and highlights MUST be 16-30 words (strict requirement)
+        - Incorporate 70-80% of missing technical keywords from JD that relate to existing skills
+        - Include soft skills and team-related terms from JD (team player, cross-functional, collaboration, etc.)
         - Return content in SAME ORDER as input
         - Match companies/projects by their names exactly
 
