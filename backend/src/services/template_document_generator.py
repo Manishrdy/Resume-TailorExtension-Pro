@@ -498,9 +498,11 @@ class TemplateDocumentGenerator:
                 url_run.font.color.rgb = RGBColor(29, 78, 216)
 
             # Description
-            if project.description:
-                desc_para = doc.add_paragraph(project.description)
-                desc_para.paragraph_format.space_after = Pt(4)
+            # Highlights (instead of Description)
+            if project.highlights:
+                for highlight in project.highlights:
+                    para = doc.add_paragraph(highlight, style='List Bullet')
+                    para.paragraph_format.left_indent = Inches(0.25)
 
             # Technologies
             if project.technologies:

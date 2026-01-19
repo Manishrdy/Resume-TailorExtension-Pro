@@ -400,12 +400,6 @@ class DocumentGeneratorService:
             )
             story.append(tech_para)
 
-        # Description
-        if project.description:
-            story.append(Spacer(1, 0.05 * inch))
-            desc_para = Paragraph(self._sanitize_text(project.description), styles["Body"])
-            story.append(desc_para)
-
         # Highlights
         if project.highlights:
             story.append(Spacer(1, 0.05 * inch))
@@ -666,11 +660,6 @@ class DocumentGeneratorService:
             tech_para = doc.add_paragraph(tech_text)
             tech_run = tech_para.runs[0]
             tech_run.font.size = Pt(10)
-
-        # Description
-        if project.description:
-            desc_para = doc.add_paragraph(project.description)
-            self._format_docx_body(desc_para)
 
         # Highlights
         if project.highlights:

@@ -410,8 +410,12 @@
                 {% endif %}
             </div>
 
-            {% if project.description %}
-            <div class="project-description">{{ project.description }}</div>
+            {% if project.highlights and project.highlights|length > 0 %}
+            <ul class="experience-bullets">
+                {% for highlight in project.highlights %}
+                <li>{{ highlight }}</li>
+                {% endfor %}
+            </ul>
             {% endif %}
 
             {% if project.technologies and project.technologies|length > 0 %}
