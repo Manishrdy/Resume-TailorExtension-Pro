@@ -89,3 +89,8 @@ backend/tests/__pycache__/
 # Allow Open Resume app library files
 !open-resume-service/src/app/lib/
 !open-resume-service/src/app/lib/**
+
+# Ignored JSON files
+backend.json
+ai_engineer.json
+backend/artifacts/

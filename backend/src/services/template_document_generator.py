@@ -152,10 +152,14 @@ class TemplateDocumentGenerator:
         if resume.skills and len(resume.skills) > 0:
             data['skillsGrouped'] = self._categorize_skills(resume.skills)
 
-        # Format dates
+        # Format dates and map fields
         for exp in data.get('experience', []):
             if exp.get('endDate') and exp['endDate'].lower() in ['present', 'current']:
                 exp['endDate'] = 'Present'
+            
+            # Map description -> bullets (template expects bullets)
+            if 'description' in exp:
+                exp['bullets'] = exp['description']
 
         # Add metadata
         data['generatedDate'] = 'Generated with Resume Tailor AI'
@@ -206,14 +210,44 @@ class TemplateDocumentGenerator:
             html_content = template.render(**template_data)
 
             # Generate PDF using WeasyPrint
-            pdf_bytes = HTML(string=html_content, base_url=self.template_dir).write_pdf()
+            # Create HTML object and convert to PDF
+            html = HTML(string=html_content, base_url=self.template_dir)
+            pdf_bytes = html.write_pdf()
 
             logger.info(f"PDF generated successfully: {len(pdf_bytes)} bytes")
             return pdf_bytes
 
         except Exception as e:
-            logger.error(f"Failed to generate PDF: {str(e)}")
-            raise Exception(f"PDF generation failed: {str(e)}")
+            logger.error(f"Failed to generate PDF via WeasyPrint: {str(e)}")
+            # Fallback: generate DOCX and convert to PDF using docx2pdf (Windows only)
+            # Skip fallback during testing to avoid COM initialization issues
+            import os
+            if os.getenv("ENVIRONMENT") == "testing":
+                logger.warning("Skipping docx2pdf fallback in testing environment")
+                raise Exception(f"PDF generation failed: {str(e)}")
+            
+            try:
+                logger.info("Falling back to DOCX → PDF conversion (docx2pdf)...")
+                docx_bytes = self.generate_docx(resume)
+                from docx2pdf import convert
+                import tempfile
+                from pathlib import Path
+
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tmpdir_path = Path(tmpdir)
+                    docx_path = tmpdir_path / "resume.docx"
+                    pdf_path = tmpdir_path / "resume.pdf"
+                    docx_path.write_bytes(docx_bytes)
+
+                    # Convert DOCX to PDF
+                    convert(str(docx_path), str(pdf_path))
+
+                    pdf_bytes = pdf_path.read_bytes()
+                    logger.info(f"PDF generated via docx2pdf: {len(pdf_bytes)} bytes")
+                    return pdf_bytes
+            except Exception as e2:
+                logger.error(f"Fallback DOCX → PDF conversion failed: {str(e2)}")
+                raise Exception(f"PDF generation failed: {str(e)}")
 
     # ==================== DOCX GENERATION (python-docx) ====================
 

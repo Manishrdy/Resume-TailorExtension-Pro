@@ -87,6 +87,8 @@ async def shutdown_event():
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(tailor.router, prefix="/api", tags=["AI Tailoring"])
 app.include_router(pdf.router, prefix="/api", tags=["Document Generation"])
+# Provide endpoints under /api/pdf for backward compatibility with tests
+app.include_router(pdf.router, prefix="/api/pdf", tags=["Document Generation (alias)"])
 
 
 # Root endpoint

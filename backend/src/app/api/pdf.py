@@ -227,3 +227,13 @@ async def document_status():
             "error": str(e),
             "message": "Document generation service is not properly configured",
         }
+
+
+@router.get(
+    "/status",
+    status_code=status.HTTP_200_OK,
+    summary="PDF Service Status",
+    description="Alias for document generation service status.",
+)
+async def pdf_status():
+    return await document_status()

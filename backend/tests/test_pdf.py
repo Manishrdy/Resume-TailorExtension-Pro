@@ -31,16 +31,16 @@ async def test_pdf_client_initialization():
 
 @pytest.mark.integration
 async def test_generate_pdf_endpoint(test_client, sample_resume, mocker):
-    """Test PDF generation endpoint with mocked Open Resume"""
-    # Mock the PDF client to return fake PDF bytes
+    """Test PDF generation endpoint"""
+    # Mock the PDF generator to return fake PDF bytes (to avoid WeasyPrint issues in tests)
     mock_pdf_bytes = b'%PDF-1.4 fake pdf content'
     
-    mock_client = AsyncMock()
-    mock_client.generate_pdf.return_value = mock_pdf_bytes
+    mock_generator = mocker.Mock()
+    mock_generator.generate_pdf.return_value = mock_pdf_bytes
     
     mocker.patch(
-        'services.pdf_client.get_pdf_client',
-        return_value=mock_client
+        'app.api.pdf.get_template_generator',
+        return_value=mock_generator
     )
     
     # Make request
@@ -62,14 +62,14 @@ async def test_generate_pdf_endpoint(test_client, sample_resume, mocker):
 
 @pytest.mark.integration
 async def test_generate_pdf_service_unavailable(test_client, sample_resume, mocker):
-    """Test PDF generation when Open Resume service is down"""
-    # Mock the PDF client to return None (service unavailable)
-    mock_client = AsyncMock()
-    mock_client.generate_pdf.return_value = None
+    """Test PDF generation error handling when generation fails"""
+    # Mock the PDF generator to raise an exception (generation failed)
+    mock_generator = mocker.Mock()
+    mock_generator.generate_pdf.side_effect = Exception("PDF generation failed")
     
     mocker.patch(
-        'services.pdf_client.get_pdf_client',
-        return_value=mock_client
+        'app.api.pdf.get_template_generator',
+        return_value=mock_generator
     )
     
     # Make request
@@ -80,7 +80,7 @@ async def test_generate_pdf_service_unavailable(test_client, sample_resume, mock
         },
     )
     
-    # Should return 500 error
+    # Should return 500 error when generation fails
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
     data = response.json()
     assert "detail" in data

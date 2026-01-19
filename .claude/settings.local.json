@@ -19,7 +19,8 @@
       "Bash(ls:*)",
       "Bash(tree:*)",
       "Bash(git add:*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(pip index:*)"
     ]
   }
 }
