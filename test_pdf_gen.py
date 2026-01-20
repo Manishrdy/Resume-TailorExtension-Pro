@@ -57,7 +57,7 @@ def generate_pdf_from_json():
         generator = get_template_generator()
         
         # Generate PDF
-        template_name = "resume_template_manish_style.html"
+        template_name = "resume_template_professional.html"
         print(f"Generating PDF for {resume.personalInfo.name} using {template_name}...")
         pdf_bytes = generator.generate_pdf(resume, template_name=template_name)
         

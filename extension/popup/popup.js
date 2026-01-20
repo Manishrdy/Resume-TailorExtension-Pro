@@ -168,6 +168,39 @@ function setupEventListeners() {
     elements.addEducation.addEventListener('click', () => addEducationEntry());
     elements.addProject.addEventListener('click', () => addProjectEntry());
     elements.addSkill.addEventListener('click', () => addSkillEntry());
+
+    // Color picker synchronization - setup after form is ready
+    setTimeout(setupColorPicker, 100);
+}
+
+// Setup Color Picker Synchronization
+function setupColorPicker() {
+    const colorPicker = document.getElementById('accent-color-picker');
+    const colorHex = document.getElementById('accent-color-hex');
+
+    if (!colorPicker || !colorHex) return;
+
+    // Update hex input when color picker changes
+    colorPicker.addEventListener('input', (e) => {
+        colorHex.value = e.target.value.toUpperCase();
+    });
+
+    // Update color picker when hex input changes
+    colorHex.addEventListener('input', (e) => {
+        let value = e.target.value;
+        // Auto-add # if missing
+        if (value && !value.startsWith('#')) {
+            value = '#' + value;
+            colorHex.value = value;
+        }
+        // Validate hex color format
+        if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
+            colorPicker.value = value;
+        }
+    });
+
+    // Initialize hex input with color picker value
+    colorHex.value = colorPicker.value.toUpperCase();
 }
 
 // Tab Switching
@@ -855,6 +888,14 @@ function populateForm(resume) {
     if (githubField) githubField.value = pi.github || '';
     if (summaryField) summaryField.value = pi.summary || '';
 
+    // Accent color
+    const colorPicker = document.getElementById('accent-color-picker');
+    const colorHex = document.getElementById('accent-color-hex');
+    if (resume.accentColor && /^#[0-9A-Fa-f]{6}$/.test(resume.accentColor)) {
+        if (colorPicker) colorPicker.value = resume.accentColor;
+        if (colorHex) colorHex.value = resume.accentColor.toUpperCase();
+    }
+
     // Clear containers first
     clearDynamicContainers();
 
@@ -1176,8 +1217,15 @@ function buildResumeFromFormData(formData) {
         education: [],
         projects: [],
         skills: [],
-        certifications: []
+        certifications: [],
+        accentColor: null  // Will be set below if valid
     };
+
+    // Add accent color if provided and valid
+    const accentColor = formData.get('accentColor');
+    if (accentColor && /^#[0-9A-Fa-f]{6}$/.test(accentColor)) {
+        resume.accentColor = accentColor;
+    }
 
     // Experience - Backend expects: company, position, location, description (required)
     const expEmployers = formData.getAll('exp-employer[]');
@@ -1509,7 +1557,7 @@ async function handleTailor() {
         elements.results.classList.add('hidden');
         elements.tailorBtn.disabled = true;
         hideMessages();
-        
+
         // Update loading message with animated progress
         const loadingMsg = elements.loading.querySelector('p') || elements.loading;
         let dotCount = 0;

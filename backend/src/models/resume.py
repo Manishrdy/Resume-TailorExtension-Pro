@@ -129,6 +129,13 @@ class Resume(BaseModel):
     certifications: List[Certification] = Field(default_factory=list)
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
+    
+    # Customization options
+    accentColor: Optional[str] = Field(
+        default=None,
+        description="Hex color code for resume accent color (e.g., #1e3a5f). Falls back to .env default if not provided.",
+        pattern=r"^#[0-9A-Fa-f]{6}$"
+    )
 
     @field_validator("skills", mode="before")
     @classmethod

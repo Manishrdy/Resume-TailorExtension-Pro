@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Resume Tailor AI</title>
     <link rel="stylesheet" href="../assets/css/styles.css">
 </head>
+
 <body>
     <div class="app">
         <!-- Stunning Header with Gradient -->
@@ -46,7 +48,7 @@
                     <h2 class="section-title">Your Resume Profiles</h2>
                     <p class="section-subtitle">Manage your professional resumes</p>
                 </div>
-                
+
                 <div class="profile-selector-wrapper">
                     <div class="select-wrapper">
                         <select id="resume-select" class="form-select">
@@ -59,18 +61,22 @@
                     </button>
                 </div>
 
-<div class="resume-actions resume-actions--secondary resume-actions--toolbar">
-    <button id="export-all-btn" class="btn btn-secondary btn-icon-only btn-compact" title="Export all saved resumes into a single backup JSON file">
-        <span>🧾</span> Export All
-    </button>
-    <button id="import-resumes-btn" class="btn btn-secondary btn-icon-only btn-compact" title="Import a resume JSON file (or a previously exported backup JSON file)">
-        <span>📥</span> Import
-    </button>
-    <button id="clear-storage-btn" class="btn btn-secondary btn-icon-only btn-compact btn-danger-outline" title="Remove resumes, history, and drafts from this browser">
-        <span>🧹</span> Clear
-    </button>
-    <input id="import-file-input" class="hidden" type="file" accept="application/json,.json">
-</div>
+                <div class="resume-actions resume-actions--secondary resume-actions--toolbar">
+                    <button id="export-all-btn" class="btn btn-secondary btn-icon-only btn-compact"
+                        title="Export all saved resumes into a single backup JSON file">
+                        <span>🧾</span> Export All
+                    </button>
+                    <button id="import-resumes-btn" class="btn btn-secondary btn-icon-only btn-compact"
+                        title="Import a resume JSON file (or a previously exported backup JSON file)">
+                        <span>📥</span> Import
+                    </button>
+                    <button id="clear-storage-btn"
+                        class="btn btn-secondary btn-icon-only btn-compact btn-danger-outline"
+                        title="Remove resumes, history, and drafts from this browser">
+                        <span>🧹</span> Clear
+                    </button>
+                    <input id="import-file-input" class="hidden" type="file" accept="application/json,.json">
+                </div>
 
                 <div id="resume-preview" class="resume-card hidden">
                     <div class="resume-card-header">
@@ -82,7 +88,7 @@
                             <p id="preview-email" class="resume-email">john@example.com</p>
                         </div>
                     </div>
-                    
+
                     <div class="resume-stats">
                         <div class="stat-item">
                             <span class="stat-icon">💼</span>
@@ -109,7 +115,7 @@
                             <span>🗑️</span> Delete
                         </button>
                     </div>
-</div>
+                </div>
             </div>
         </div>
 
@@ -138,7 +144,7 @@
                     <div class="divider">
                         <span>or paste manually</span>
                     </div>
-                    <textarea id="job-description" class="form-textarea" rows="8" 
+                    <textarea id="job-description" class="form-textarea" rows="8"
                         placeholder="Paste the job description here...&#10;&#10;Include requirements, responsibilities, and qualifications for best results."></textarea>
                 </div>
 
@@ -222,7 +228,7 @@
                     <h2 class="section-title">Tailoring History</h2>
                     <p class="section-subtitle">Your previously tailored resumes</p>
                 </div>
-                
+
                 <div id="history-list" class="history-grid">
                     <div class="empty-state">
                         <div class="empty-icon">📭</div>
@@ -314,7 +320,7 @@
                             <div class="form-section-header">
                                 <h3 class="form-section-title">📝 Resume Name</h3>
                             </div>
-                            <input type="text" name="resumeName" class="form-input" 
+                            <input type="text" name="resumeName" class="form-input"
                                 placeholder="e.g., Backend Engineer, Full Stack Developer, Data Scientist" required>
                         </div>
 
@@ -323,7 +329,7 @@
                             <div class="form-section-header">
                                 <h3 class="form-section-title">👤 Personal Information</h3>
                             </div>
-                            
+
                             <div class="form-grid">
                                 <div class="form-field">
                                     <label class="form-field-label">Full Name *</label>
@@ -331,7 +337,8 @@
                                 </div>
                                 <div class="form-field">
                                     <label class="form-field-label">Email *</label>
-                                    <input type="email" name="email" class="form-input" placeholder="john@example.com" required>
+                                    <input type="email" name="email" class="form-input" placeholder="john@example.com"
+                                        required>
                                 </div>
                                 <div class="form-field">
                                     <label class="form-field-label">Phone</label>
@@ -343,7 +350,8 @@
                                 </div>
                                 <div class="form-field">
                                     <label class="form-field-label">LinkedIn</label>
-                                    <input type="url" name="linkedin" class="form-input" placeholder="linkedin.com/in/username">
+                                    <input type="url" name="linkedin" class="form-input"
+                                        placeholder="linkedin.com/in/username">
                                 </div>
                                 <div class="form-field">
                                     <label class="form-field-label">Website</label>
@@ -357,9 +365,22 @@
                             </div>
 
                             <div class="form-field">
+                                <label class="form-field-label">🎨 Resume Accent Color</label>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <input type="color" name="accentColor" id="accent-color-picker" class="color-picker"
+                                        value="#1e3a5f">
+                                    <input type="text" id="accent-color-hex" class="form-input" placeholder="#1e3a5f"
+                                        pattern="^#[0-9A-Fa-f]{6}$" maxlength="7" style="flex: 1;">
+                                </div>
+                                <small class="form-field-hint">Choose a color for headings and accents. Defaults to
+                                    professional blue if not set.</small>
+                            </div>
+
+                            <div class="form-field">
                                 <label class="form-field-label">Professional Summary *</label>
-                                <textarea name="summary" class="form-textarea" rows="4" 
-                                    placeholder="Backend Engineer with 3+ years of experience designing and building scalable systems..." required></textarea>
+                                <textarea name="summary" class="form-textarea" rows="4"
+                                    placeholder="Backend Engineer with 3+ years of experience designing and building scalable systems..."
+                                    required></textarea>
                             </div>
                         </div>
 
@@ -400,7 +421,8 @@
                         <div class="form-section">
                             <div class="form-section-header">
                                 <h3 class="form-section-title">⚡ Skills</h3>
-                                <p class="form-section-subtitle">Add categories like "Programming Languages", "Frameworks", etc.</p>
+                                <p class="form-section-subtitle">Add categories like "Programming Languages",
+                                    "Frameworks", etc.</p>
                             </div>
                             <div id="skills-container" class="dynamic-container"></div>
                             <button type="button" class="btn btn-secondary btn-add" id="add-skill">
@@ -411,10 +433,11 @@
                         <!-- Form Actions -->
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" id="clear-draft-btn">Clear Draft</button>
-<button type="button" class="btn btn-secondary btn-with-icon" id="export-draft-json-btn" title="Export what you've typed to a JSON file (recommended as a backup)">
-    <span class="btn-icon">📦</span>
-    <span>Export Draft</span>
-</button>
+                            <button type="button" class="btn btn-secondary btn-with-icon" id="export-draft-json-btn"
+                                title="Export what you've typed to a JSON file (recommended as a backup)">
+                                <span class="btn-icon">📦</span>
+                                <span>Export Draft</span>
+                            </button>
                             <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
                             <button type="submit" class="btn btn-success btn-with-icon">
                                 <span class="btn-icon">💾</span>
@@ -432,4 +455,5 @@
     <script src="../assets/js/api.js"></script>
     <script src="../popup/popup.js"></script>
 </body>
+
 </html>

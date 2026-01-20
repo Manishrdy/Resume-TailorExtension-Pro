@@ -170,30 +170,46 @@ class TemplateDocumentGenerator:
         # Add metadata
         data['generatedDate'] = 'Generated with Resume Tailor AI'
 
-        # Add styling settings from config (with fallback to defaults)
+        # Add styling settings with fallback chain:
+        # 1. Resume-specific customization (if provided)
+        # 2. Environment config (.env file)
+        # 3. Hardcoded defaults
+        
+        # Try to load settings from .env
         try:
             from ..app.config import settings
-            data['accentColor'] = settings.RESUME_ACCENT_COLOR
-            data['fontFamily'] = settings.RESUME_FONT_FAMILY
-            data['fontSize'] = settings.RESUME_FONT_SIZE
+            env_accent_color = settings.RESUME_ACCENT_COLOR
+            env_font_family = settings.RESUME_FONT_FAMILY
+            env_font_size = settings.RESUME_FONT_SIZE
         except ImportError:
             try:
                 from app.config import settings
-                data['accentColor'] = settings.RESUME_ACCENT_COLOR
-                data['fontFamily'] = settings.RESUME_FONT_FAMILY
-                data['fontSize'] = settings.RESUME_FONT_SIZE
+                env_accent_color = settings.RESUME_ACCENT_COLOR
+                env_font_family = settings.RESUME_FONT_FAMILY
+                env_font_size = settings.RESUME_FONT_SIZE
             except (ImportError, ModuleNotFoundError) as e:
-                # Fallback to default styling if config not available
-                logger.warning(f"Could not import settings, using defaults: {e}")
-                data['accentColor'] = '#1e3a5f'  # Professional blue
-                data['fontFamily'] = 'Roboto'
-                data['fontSize'] = 9
+                # Fallback to hardcoded defaults if config not available
+                logger.warning(f"Could not import settings, using hardcoded defaults: {e}")
+                env_accent_color = '#1e3a5f'  # Professional blue
+                env_font_family = 'Roboto'
+                env_font_size = 9
+        
+        # Use resume-specific accent color if provided, otherwise use env/default
+        if resume.accentColor:
+            logger.info(f"Using resume-specific accent color: {resume.accentColor}")
+            data['accentColor'] = resume.accentColor
+        else:
+            data['accentColor'] = env_accent_color
+        
+        # Font settings always come from env (for now)
+        data['fontFamily'] = env_font_family
+        data['fontSize'] = env_font_size
 
         return data
 
     # ==================== PDF GENERATION (WeasyPrint) ====================
 
-    def generate_pdf(self, resume: Resume, template_name: str = 'resume_template.html') -> bytes:
+    def generate_pdf(self, resume: Resume, template_name: str = 'resume_template_professional.html') -> bytes:
         """
         Generate ATS-friendly PDF from HTML template using WeasyPrint.
 
