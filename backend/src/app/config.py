@@ -37,24 +37,14 @@ class Settings(BaseSettings):
     # CORS Configuration - accepts string or list
     CORS_ORIGINS: Union[str, List[str]] = "chrome-extension://*,http://localhost:5173,http://localhost:3000"
 
-    # Open Resume Service Configuration (DEPRECATED - No longer used)
-    # Document generation now uses self-contained Python module (document_generator.py)
-    # These settings are kept for backward compatibility only
-    OPEN_RESUME_URL: str = "http://localhost:3001"
-    OPEN_RESUME_API_TIMEOUT: int = 30
-    OPEN_RESUME_FONT_FAMILY: str = "Open Sans"
-    OPEN_RESUME_FONT_SIZE: int = 11
-    OPEN_RESUME_THEME_COLOR: str = ""
-    OPEN_RESUME_DOCUMENT_SIZE: str = "A4"
-
     # Gemini AI Configuration (NEW google-genai package)
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash-exp"  # Updated to latest model
+    GEMINI_MODEL: str = ""
     GEMINI_TEMPERATURE: float = 0.7
-    GEMINI_MAX_TOKENS: int = 16384  # Increased for better responses
+    GEMINI_MAX_TOKENS: int = 16384
     GEMINI_TIMEOUT: int = 30
     GEMINI_RETRY_ATTEMPTS: int = 3
-    GEMINI_RETRY_DELAY: float = 1.0  # seconds
+    GEMINI_RETRY_DELAY: float = 1.0
 
     # Logging Configuration
     LOG_LEVEL: str = "INFO"
@@ -84,31 +74,10 @@ class Settings(BaseSettings):
 # Create global settings instance
 settings = Settings()
 
-# Debug output
-gemini_key_status = "SET" if settings.GEMINI_API_KEY else "NOT SET"
-print(f"GEMINI_API_KEY: {gemini_key_status}")
-if settings.GEMINI_API_KEY:
-    print(f"   Key length: {len(settings.GEMINI_API_KEY)} characters")
-print(f"GEMINI_MODEL: {settings.GEMINI_MODEL}")
-print(f"DOCUMENT_GENERATION: Self-contained Python module (ReportLab + python-docx)")
-print(f"CORS_ORIGINS: {settings.get_cors_origins()}")
+# Check for critical configuration
+if not settings.GEMINI_API_KEY:
+    print("WARNING: GEMINI_API_KEY not set in .env file. AI features will not work.")
+
+print(f"Loaded configuration from: {env_path if env_path.exists() else 'Environment Variables'}")
 print(f"Environment: {settings.ENVIRONMENT}")
-
-
-def validate_settings():
-    """
-    Validate critical settings on startup
-    Raises ValueError if critical settings are missing
-    """
-    errors = []
-
-    if not settings.GEMINI_API_KEY:
-        errors.append("GEMINI_API_KEY is required")
-
-    # NOTE: OPEN_RESUME_URL validation removed - no longer required
-    # Document generation now uses self-contained Python module
-
-    if errors:
-        raise ValueError(
-            f"Configuration errors:\n" + "\n".join(f"  - {err}" for err in errors)
-        )
+print(f"CORS Origins: {settings.get_cors_origins()}")

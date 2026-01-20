@@ -130,6 +130,19 @@ function setupEventListeners() {
     elements.saveSettingsBtn.addEventListener('click', handleSaveSettings);
     elements.testConnectionBtn.addEventListener('click', handleTestConnection);
 
+    // Dark mode instant toggle
+    elements.darkModeToggle.addEventListener('change', async (e) => {
+        if (e.target.checked) {
+            document.body.classList.add('dark-mode');
+        } else {
+            document.body.classList.remove('dark-mode');
+        }
+        // Auto-save dark mode preference
+        const settings = await storage.getSettings();
+        settings.darkMode = e.target.checked;
+        await storage.saveSettings(settings);
+    });
+
     // Modal
     elements.modalClose.addEventListener('click', closeModal);
     elements.cancelBtn.addEventListener('click', closeModal);
@@ -1117,10 +1130,8 @@ function addEducationEntry(data = null) {
             </div>
         </div>
         <div class="form-group">
-            <label>Achievements / Coursework (one per line)</label>
-            <textarea name="edu-coursework[]" class="form-control" rows="3" placeholder="Artificial Intelligence
-Theory of Algorithms
-Modern Computer Architecture">${achievements.join('\\n')}</textarea>
+            <label>Achievements / Coursework (comma separated)</label>
+            <textarea name="edu-coursework[]" class="form-control" rows="2" placeholder="Artificial Intelligence, Theory of Algorithms, Modern Computer Architecture">${achievements.join(', ')}</textarea>
         </div>
     `;
     elements.educationContainer.appendChild(div);
@@ -1635,6 +1646,40 @@ function displayResults(result) {
     });
 }
 
+// Extract company name from job description
+function extractCompanyName(jobDescription) {
+    if (!jobDescription) return null;
+
+    const patterns = [
+        /(?:at|with|for|join(?:ing)?)\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,3})\s*(?:,|\.|\!|as|is|are)/i,
+        /([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,2})\s+is\s+(?:looking|hiring|seeking)/i,
+        /^([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,2})\s*[-–—]/m,
+        /company:\s*([A-Za-z0-9]+(?:\s+[A-Za-z0-9]+){0,3})/i,
+        /about\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,2}):/i
+    ];
+
+    for (const pattern of patterns) {
+        const match = jobDescription.match(pattern);
+        if (match && match[1]) {
+            let company = match[1].trim();
+            // Filter out common false positives
+            const blacklist = ['We', 'The', 'Our', 'You', 'This', 'Senior', 'Junior', 'About', 'Job', 'Position', 'Role'];
+            if (!blacklist.includes(company) && company.length > 1 && company.length < 30) {
+                return company.replace(/\s+/g, '_');
+            }
+        }
+    }
+    return null;
+}
+
+// Generate structured filename
+function generateFilename(resume, extension, companyName = null) {
+    const userName = resume.personalInfo.name.replace(/\s+/g, '_');
+    const roleOrCompany = companyName || currentResume.name.replace(/\s+/g, '_');
+    const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    return `${userName}_${roleOrCompany}_${date}.${extension}`;
+}
+
 // Handle Download PDF
 async function handleDownloadPdf() {
     if (!tailoredResume) {
@@ -1644,21 +1689,23 @@ async function handleDownloadPdf() {
 
     try {
         elements.downloadPdfBtn.disabled = true;
-        elements.downloadPdfBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Generating PDF...</span>';
+        elements.downloadPdfBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Generating...</span>';
 
         const pdfBlob = await api.generatePDF(tailoredResume);
 
-        const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
-        const filename = `${currentResume.name.replace(/\s+/g, '_')}_${timestamp}.pdf`;
+        // Extract company name from job description
+        const jobDesc = elements.jobDescription.value;
+        const companyName = extractCompanyName(jobDesc);
+        const filename = generateFilename(tailoredResume, 'pdf', companyName);
 
         await api.downloadPDF(pdfBlob, filename);
 
-        // Add to history
+        // Add to history with extracted info
         await storage.addToHistory({
             id: crypto.randomUUID(),
             resumeName: currentResume.name,
-            jobTitle: 'Job Application',
-            company: 'Company',
+            userName: tailoredResume.personalInfo.name,
+            company: companyName ? companyName.replace(/_/g, ' ') : null,
             atsScore: parseInt(elements.atsScore.textContent),
             timestamp: new Date().toISOString(),
             filename: filename
@@ -1672,11 +1719,11 @@ async function handleDownloadPdf() {
         showError(error.message || 'PDF generation failed');
     } finally {
         elements.downloadPdfBtn.disabled = false;
-        elements.downloadPdfBtn.innerHTML = '<span class="btn-icon">📄</span><span>Download PDF</span>';
+        elements.downloadPdfBtn.innerHTML = '<span class="btn-icon">📄</span><span>PDF</span>';
     }
 }
 
-// Handle Download DOCX (NEW)
+// Handle Download DOCX
 async function handleDownloadDocx() {
     if (!tailoredResume) {
         showError('No tailored resume available');
@@ -1685,21 +1732,23 @@ async function handleDownloadDocx() {
 
     try {
         elements.downloadDocxBtn.disabled = true;
-        elements.downloadDocxBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Generating DOCX...</span>';
+        elements.downloadDocxBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Generating...</span>';
 
         const docxBlob = await api.generateDOCX(tailoredResume);
 
-        const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
-        const filename = `${currentResume.name.replace(/\s+/g, '_')}_${timestamp}.docx`;
+        // Extract company name from job description
+        const jobDesc = elements.jobDescription.value;
+        const companyName = extractCompanyName(jobDesc);
+        const filename = generateFilename(tailoredResume, 'docx', companyName);
 
         await api.downloadFile(docxBlob, filename);
 
-        // Add to history
+        // Add to history with extracted info
         await storage.addToHistory({
             id: crypto.randomUUID(),
             resumeName: currentResume.name,
-            jobTitle: 'Job Application',
-            company: 'Company',
+            userName: tailoredResume.personalInfo.name,
+            company: companyName ? companyName.replace(/_/g, ' ') : null,
             atsScore: parseInt(elements.atsScore.textContent),
             timestamp: new Date().toISOString(),
             filename: filename
@@ -1713,16 +1762,23 @@ async function handleDownloadDocx() {
         showError(error.message || 'DOCX generation failed');
     } finally {
         elements.downloadDocxBtn.disabled = false;
-        elements.downloadDocxBtn.innerHTML = '<span class="btn-icon">📝</span><span>Download DOCX</span>';
+        elements.downloadDocxBtn.innerHTML = '<span class="btn-icon">📝</span><span>DOCX</span>';
     }
 }
+
 
 // Load History
 async function loadHistory() {
     const history = await storage.getHistory();
 
     if (history.length === 0) {
-        elements.historyList.innerHTML = '<p class="empty">No tailored resumes yet</p>';
+        elements.historyList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">📭</div>
+                <h3>No History Yet</h3>
+                <p>Your tailored resumes will appear here</p>
+            </div>
+        `;
         return;
     }
 
@@ -1730,21 +1786,31 @@ async function loadHistory() {
 
     history.forEach(entry => {
         const div = document.createElement('div');
-        div.className = 'history-item';
+        div.className = 'history-card';
 
-        const date = new Date(entry.timestamp).toLocaleDateString();
+        const date = new Date(entry.timestamp);
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const score = entry.atsScore || 0;
+        const scoreClass = score >= 80 ? 'high' : score >= 60 ? 'medium' : 'low';
+        const companyDisplay = entry.company || entry.resumeName;
 
         div.innerHTML = `
-            <div class="history-info">
-                <h4>${entry.resumeName}</h4>
-                <p class="history-meta">Score: ${entry.atsScore}/100 • ${date}</p>
+            <div class="history-score ${scoreClass}">
+                <span class="score-value">${score}</span>
             </div>
-            <button class="btn btn-sm btn-danger" onclick="deleteHistory('${entry.id}')">Delete</button>
+            <div class="history-content">
+                <h4 class="history-title">${companyDisplay}</h4>
+                <span class="history-meta">${entry.userName || ''} • ${dateStr}</span>
+            </div>
+            <button class="history-delete" onclick="deleteHistory('${entry.id}')" title="Delete">
+                <span>✕</span>
+            </button>
         `;
 
         elements.historyList.appendChild(div);
     });
 }
+
 
 // Delete History (global function for onclick)
 window.deleteHistory = async function (id) {

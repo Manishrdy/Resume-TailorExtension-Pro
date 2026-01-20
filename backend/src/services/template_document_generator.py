@@ -4,8 +4,8 @@ Uses HTML templates with Jinja2 for consistent, professional formatting.
 
 This replaces the manual ReportLab-based generation with a template-driven approach:
 - HTML templates → WeasyPrint → PDF (ATS-optimized)
-- Template data → python-docx → DOCX (editable)
-- 100% format consistency between PDF and DOCX
+- Template data → python-docx → DOCX (Native Generation with Tables)
+- High visual consistency between PDF and DOCX
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ from typing import Any, Dict, List, Optional
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.shared import Inches, Pt, RGBColor
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
 
@@ -49,22 +51,9 @@ except ImportError:
 class TemplateDocumentGenerator:
     """
     Template-based document generator for PDF and DOCX resumes.
-
-    Features:
-    - Jinja2 HTML templates for consistent styling
-    - WeasyPrint for HTML → PDF conversion (better ATS compatibility than xhtml2pdf)
-    - python-docx for editable Word documents
-    - Automatic skill categorization
-    - Clean, single-column ATS-friendly layout
     """
 
     def __init__(self, template_dir: Optional[str] = None):
-        """
-        Initialize the template-based document generator.
-
-        Args:
-            template_dir: Path to templates directory (defaults to backend/templates)
-        """
         if template_dir is None:
             # Default to backend/templates directory
             current_file = Path(__file__).resolve()
@@ -73,7 +62,6 @@ class TemplateDocumentGenerator:
 
         self.template_dir = template_dir
 
-        # Initialize Jinja2 environment
         self.jinja_env = Environment(
             loader=FileSystemLoader(template_dir),
             autoescape=select_autoescape(['html', 'xml']),
@@ -84,16 +72,6 @@ class TemplateDocumentGenerator:
         logger.info(f"Initialized TemplateDocumentGenerator with templates from: {template_dir}")
 
     def _categorize_skills(self, skills: List[str]) -> Dict[str, List[str]]:
-        """
-        Categorize skills into logical groups for better organization.
-
-        Args:
-            skills: List of skill strings
-
-        Returns:
-            Dictionary mapping category names to skill lists
-        """
-        # Skill categorization keywords
         categories = {
             "Languages": ["python", "javascript", "typescript", "java", "c++", "c#", "go", "rust", "ruby", "php", "kotlin", "swift", "scala"],
             "Frontend": ["react", "vue", "angular", "svelte", "html", "css", "sass", "tailwind", "bootstrap", "webpack", "vite"],
@@ -103,96 +81,54 @@ class TemplateDocumentGenerator:
             "Tools & Other": []
         }
 
-        # Categorize each skill
         categorized = {cat: [] for cat in categories.keys()}
         uncategorized = []
 
         for skill in skills:
             skill_lower = skill.lower()
             matched = False
-
             for category, keywords in categories.items():
-                if category == "Tools & Other":
-                    continue
-
+                if category == "Tools & Other": continue
                 for keyword in keywords:
                     if keyword in skill_lower or skill_lower in keyword:
                         categorized[category].append(skill)
                         matched = True
                         break
+                if matched: break
+            if not matched: uncategorized.append(skill)
 
-                if matched:
-                    break
-
-            if not matched:
-                uncategorized.append(skill)
-
-        # Add uncategorized to "Tools & Other"
         categorized["Tools & Other"] = uncategorized
-
-        # Remove empty categories
         categorized = {k: v for k, v in categorized.items() if v}
-
         return categorized
 
     def _prepare_template_data(self, resume: Resume) -> Dict[str, Any]:
-        """
-        Prepare resume data for template rendering.
-
-        Args:
-            resume: Resume model instance
-
-        Returns:
-            Dictionary with all template variables
-        """
-        # Convert resume to dict
         data = resume.model_dump()
 
-        # Categorize skills if present
         if resume.skills and len(resume.skills) > 0:
             data['skillsGrouped'] = self._categorize_skills(resume.skills)
 
-        # Format dates and map fields
         for exp in data.get('experience', []):
             if exp.get('endDate') and exp['endDate'].lower() in ['present', 'current']:
                 exp['endDate'] = 'Present'
-            
-            # Map description -> bullets (template expects bullets)
             if 'description' in exp:
                 exp['bullets'] = exp['description']
 
-        # Format education fields
         for edu in data.get('education', []):
-            # Create coursework string from achievements if present
             if 'achievements' in edu and edu['achievements']:
                 edu['coursework'] = ", ".join(edu['achievements'])
 
-        # Add metadata
         data['generatedDate'] = 'Generated with Resume Tailor AI'
 
-        # Add styling settings with fallback chain:
-        # 1. Resume-specific customization (if provided)
-        # 2. Environment config (.env file)
-        # 3. Hardcoded defaults
-        
-        # Try to load settings from .env
+        # Env settings fallback
         try:
             from ..app.config import settings
             env_accent_color = settings.RESUME_ACCENT_COLOR
             env_font_family = settings.RESUME_FONT_FAMILY
             env_font_size = settings.RESUME_FONT_SIZE
-        except ImportError:
-            try:
-                from app.config import settings
-                env_accent_color = settings.RESUME_ACCENT_COLOR
-                env_font_family = settings.RESUME_FONT_FAMILY
-                env_font_size = settings.RESUME_FONT_SIZE
-            except (ImportError, ModuleNotFoundError) as e:
-                # Fallback to hardcoded defaults if config not available
-                logger.warning(f"Could not import settings, using hardcoded defaults: {e}")
-                env_accent_color = '#1e3a5f'  # Professional blue
-                env_font_family = 'Roboto'
-                env_font_size = 9
+        except (ImportError, ModuleNotFoundError):
+            env_accent_color = '#1e3a5f'
+            env_font_family = 'Roboto'
+            env_font_size = 9
         
         # Use resume-specific accent color if provided, otherwise use env/default
         if resume.accentColor:
@@ -201,150 +137,88 @@ class TemplateDocumentGenerator:
         else:
             data['accentColor'] = env_accent_color
         
-        # Font settings always come from env (for now)
         data['fontFamily'] = env_font_family
         data['fontSize'] = env_font_size
 
         return data
 
-    # ==================== PDF GENERATION (WeasyPrint) ====================
-
     def generate_pdf(self, resume: Resume, template_name: str = 'resume_template_professional.html') -> bytes:
-        """
-        Generate ATS-friendly PDF from HTML template using WeasyPrint.
-
-        WeasyPrint advantages over xhtml2pdf:
-        - Better CSS support (CSS3, flexbox, etc.)
-        - More accurate rendering
-        - Better font handling
-        - Cleaner output for ATS systems
-
-        Args:
-            resume: Resume model instance
-            template_name: Name of the HTML template to use
-
-        Returns:
-            PDF file as bytes
-
-        Raises:
-            Exception: If PDF generation fails or WeasyPrint unavailable
-        """
         if not WEASYPRINT_AVAILABLE:
-            error_msg = (
-                f"WeasyPrint is not properly installed. Missing system dependencies.\n"
-                f"Error: {WEASYPRINT_ERROR}\n\n"
-                f"SOLUTIONS:\n"
-                f"1. Use Docker (Recommended): Run 'make dev' from project root\n"
-                f"2. Install GTK+ on Windows: https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases\n"
-                f"   Then reinstall: pip install --force-reinstall weasyprint==61.0"
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
+             raise RuntimeError(f"WeasyPrint unavailable: {WEASYPRINT_ERROR}")
         
         try:
-            logger.info(f"Generating PDF from template ({template_name}) for: {resume.personalInfo.name}")
-
-            # Prepare template data
+            logger.info(f"Generating PDF for: {resume.personalInfo.name}")
             template_data = self._prepare_template_data(resume)
-
-            # Load and render HTML template
             template = self.jinja_env.get_template(template_name)
             html_content = template.render(**template_data)
-
-            # Generate PDF using WeasyPrint
-            # Create HTML object and convert to PDF
             html = HTML(string=html_content, base_url=self.template_dir)
             pdf_bytes = html.write_pdf()
-
             logger.info(f"PDF generated successfully: {len(pdf_bytes)} bytes")
             return pdf_bytes
-
         except Exception as e:
             logger.error(f"Failed to generate PDF via WeasyPrint: {str(e)}")
-            # Fallback: generate DOCX and convert to PDF using docx2pdf (Windows only)
-            # Skip fallback during testing to avoid COM initialization issues
-            import os
-            if os.getenv("ENVIRONMENT") == "testing":
-                logger.warning("Skipping docx2pdf fallback in testing environment")
-                raise Exception(f"PDF generation failed: {str(e)}")
-            
-            try:
-                logger.info("Falling back to DOCX → PDF conversion (docx2pdf)...")
-                docx_bytes = self.generate_docx(resume)
-                from docx2pdf import convert
-                import tempfile
-                from pathlib import Path
+            # Fallback logic here if needed, or re-raise
+            raise e
 
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    tmpdir_path = Path(tmpdir)
-                    docx_path = tmpdir_path / "resume.docx"
-                    pdf_path = tmpdir_path / "resume.pdf"
-                    docx_path.write_bytes(docx_bytes)
-
-                    # Convert DOCX to PDF
-                    convert(str(docx_path), str(pdf_path))
-
-                    pdf_bytes = pdf_path.read_bytes()
-                    logger.info(f"PDF generated via docx2pdf: {len(pdf_bytes)} bytes")
-                    return pdf_bytes
-            except Exception as e2:
-                logger.error(f"Fallback DOCX → PDF conversion failed: {str(e2)}")
-                raise Exception(f"PDF generation failed: {str(e)}")
-
-    # ==================== DOCX GENERATION (python-docx) ====================
+    # ==================== DOCX GENERATION (Native) ====================
 
     def generate_docx(self, resume: Resume) -> bytes:
         """
-        Generate editable DOCX resume with formatting matching the PDF template.
-
-        Args:
-            resume: Resume model instance
-
-        Returns:
-            DOCX file as bytes
-
-        Raises:
-            Exception: If DOCX generation fails
+        Generate ATS-friendly DOCX resume using python-docx.
+        Uses native Word tables and styles to mirror the PDF layout.
         """
         try:
             logger.info(f"Generating DOCX for: {resume.personalInfo.name}")
 
+            # Prepare data
+            data = self._prepare_template_data(resume)
+            accent_color_hex = data.get('accentColor', '#1e3a5f')
+            accent_rgb = self._hex_to_rgb(accent_color_hex)
+            
             # Create document
             doc = Document()
-
-            # Set document margins (0.75 inches to match HTML template)
+            
+            # Set margins (Narrow: 0.5")
             sections = doc.sections
             for section in sections:
-                section.top_margin = Inches(0.75)
-                section.bottom_margin = Inches(0.75)
-                section.left_margin = Inches(0.75)
-                section.right_margin = Inches(0.75)
+                section.top_margin = Inches(0.5)
+                section.bottom_margin = Inches(0.5)
+                section.left_margin = Inches(0.7)
+                section.right_margin = Inches(0.7)
 
-            # ==== HEADER - Name and Contact Info ====
-            self._add_docx_header(doc, resume.personalInfo)
+            # --- Header ---
+            self._add_docx_header(doc, resume.personalInfo, accent_rgb)
 
-            # ==== PROFESSIONAL SUMMARY ====
+            # --- Summary ---
             if resume.personalInfo.summary:
-                self._add_docx_section(doc, "PROFESSIONAL SUMMARY", resume.personalInfo.summary)
+                self._add_docx_section_title(doc, "PROFESSIONAL SUMMARY", accent_rgb)
+                para = doc.add_paragraph(resume.personalInfo.summary)
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                self._set_font(para, size=10)
 
-            # ==== PROFESSIONAL EXPERIENCE ====
-            if resume.experience and len(resume.experience) > 0:
-                self._add_docx_experience(doc, resume.experience)
-
-            # ==== EDUCATION ====
-            if resume.education and len(resume.education) > 0:
+            # --- Education ---
+            if resume.education:
+                self._add_docx_section_title(doc, "EDUCATION", accent_rgb)
                 self._add_docx_education(doc, resume.education)
 
-            # ==== TECHNICAL SKILLS ====
-            if resume.skills and len(resume.skills) > 0:
+            # --- Skills ---
+            if resume.skills:
+                self._add_docx_section_title(doc, "SKILLS", accent_rgb)
                 self._add_docx_skills(doc, resume.skills)
 
-            # ==== PROJECTS ====
-            if resume.projects and len(resume.projects) > 0:
-                self._add_docx_projects(doc, resume.projects)
+            # --- Experience ---
+            if resume.experience:
+                self._add_docx_section_title(doc, "WORK EXPERIENCE", accent_rgb)
+                self._add_docx_experience(doc, resume.experience)
 
-            # ==== CERTIFICATIONS ====
-            if resume.certifications and len(resume.certifications) > 0:
+            # --- Projects ---
+            if resume.projects:
+                self._add_docx_section_title(doc, "PROJECTS", accent_rgb)
+                self._add_docx_projects(doc, resume.projects, accent_rgb)
+
+            # --- Certifications ---
+            if resume.certifications:
+                self._add_docx_section_title(doc, "CERTIFICATIONS", accent_rgb)
                 self._add_docx_certifications(doc, resume.certifications)
 
             # Save to bytes
@@ -362,235 +236,214 @@ class TemplateDocumentGenerator:
 
     # ==================== DOCX HELPER METHODS ====================
 
-    def _add_docx_header(self, doc: Document, personal_info):
-        """Add header with name and contact information"""
+    def _hex_to_rgb(self, hex_color: str) -> RGBColor:
+        hex_color = hex_color.lstrip('#')
+        try:
+            return RGBColor(
+                int(hex_color[0:2], 16),
+                int(hex_color[2:4], 16),
+                int(hex_color[4:6], 16)
+            )
+        except ValueError:
+            return RGBColor(30, 58, 95)  # Default Fallback
+
+    def _set_font(self, para, name='Arial', size=10, bold=False, italic=False, color=None):
+        for run in para.runs:
+            run.font.name = name
+            run.font.size = Pt(size)
+            run.font.bold = bold
+            run.font.italic = italic
+            if color: run.font.color.rgb = color
+            
+    def _add_docx_header(self, doc: Document, personal_info, accent_rgb):
         # Name
         name_para = doc.add_paragraph()
-        name_run = name_para.add_run(personal_info.name)
-        name_run.font.size = Pt(22)
+        name_run = name_para.add_run(personal_info.name.upper())
+        name_run.font.name = 'Arial'
+        name_run.font.size = Pt(24)
         name_run.font.bold = True
-        name_run.font.color.rgb = RGBColor(26, 26, 26)
+        name_run.font.color.rgb = accent_rgb
         name_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        name_para.paragraph_format.space_after = Pt(4)
 
-        # Contact info
+        # Contact info line
         contact_parts = []
-        if personal_info.email:
-            contact_parts.append(personal_info.email)
-        if personal_info.phone:
-            contact_parts.append(personal_info.phone)
-        if personal_info.location:
-            contact_parts.append(personal_info.location)
-        if personal_info.linkedin:
-            contact_parts.append("LinkedIn")
-        if personal_info.github:
-            contact_parts.append("GitHub")
+        if personal_info.email: contact_parts.append(personal_info.email)
+        if personal_info.phone: contact_parts.append(personal_info.phone)
+        if personal_info.location: contact_parts.append(personal_info.location)
+        if personal_info.linkedin: 
+            linkedin = personal_info.linkedin.replace('https://', '').replace('http://', '').replace('www.', '')
+            contact_parts.append(linkedin)
         if personal_info.website:
-            contact_parts.append("Portfolio")
-
+            website = personal_info.website.replace('https://', '').replace('http://', '').replace('www.', '')
+            contact_parts.append(website)
+        
         if contact_parts:
-            contact_para = doc.add_paragraph(" • ".join(contact_parts))
+            contact_para = doc.add_paragraph(" | ".join(contact_parts))
             contact_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            contact_run = contact_para.runs[0]
-            contact_run.font.size = Pt(10)
-            contact_run.font.color.rgb = RGBColor(75, 85, 99)
-
-        # Add horizontal line
-        doc.add_paragraph()
-
-    def _add_docx_section(self, doc: Document, title: str, content: Optional[str] = None):
-        """Add a section with title and optional content"""
-        # Section title
-        title_para = doc.add_paragraph()
-        title_run = title_para.add_run(title)
-        title_run.font.size = Pt(14)
-        title_run.font.bold = True
-        title_run.font.color.rgb = RGBColor(37, 99, 235)  # #2563eb
-
-        # Content paragraph if provided
-        if content:
-            content_para = doc.add_paragraph(content)
-            content_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            content_para.paragraph_format.space_after = Pt(12)
+            for run in contact_para.runs:
+                run.font.size = Pt(9)
+                run.font.name = 'Arial'
 
         doc.add_paragraph()  # Spacing
 
+    def _add_docx_section_title(self, doc: Document, title: str, accent_rgb):
+        para = doc.add_paragraph()
+        run = para.add_run(title)
+        run.font.name = 'Arial'
+        run.font.size = Pt(11)
+        run.font.bold = True
+        run.font.color.rgb = accent_rgb
+        
+        para.paragraph_format.space_before = Pt(12)
+        para.paragraph_format.space_after = Pt(3)
+        
+        # Add a bottom border
+        p = para._p
+        pPr = p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bottom = OxmlElement('w:bottom')
+        bottom.set(qn('w:val'), 'single')
+        bottom.set(qn('w:sz'), '6')
+        bottom.set(qn('w:space'), '1')
+        bottom.set(qn('w:color'), 'auto')
+        pBdr.append(bottom)
+        pPr.append(pBdr)
+
+    def _create_two_col_row(self, doc, left_text, right_text, bold=False):
+        """Simulate a left-right layout using a 2-column table"""
+        table = doc.add_table(rows=1, cols=2)
+        table.autofit = False
+        table.allow_autofit = False
+        
+        # Widths: 5.0" left, 2.0" right roughly
+        table.columns[0].width = Inches(5.0)
+        table.columns[1].width = Inches(2.0)
+        
+        cell_left = table.cell(0, 0)
+        cell_right = table.cell(0, 1)
+        
+        # Left Content
+        p_left = cell_left.paragraphs[0]
+        run_left = p_left.add_run(left_text)
+        run_left.font.name = 'Arial'
+        run_left.font.size = Pt(11)
+        if bold: run_left.font.bold = True
+        
+        # Right Content
+        p_right = cell_right.paragraphs[0]
+        p_right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        if right_text:
+            run_right = p_right.add_run(right_text)
+            run_right.font.name = 'Arial'
+            run_right.font.size = Pt(10)
+            run_right.font.italic = True
+        
+        # Format table to look invisible
+        # This usually defaults to no borders in python-docx unless style is set
+
     def _add_docx_experience(self, doc: Document, experience: List):
-        """Add professional experience section"""
-        self._add_docx_section(doc, "PROFESSIONAL EXPERIENCE")
-
         for exp in experience:
-            # Position title
-            position_para = doc.add_paragraph()
-            position_run = position_para.add_run(exp.position)
-            position_run.font.size = Pt(12)
-            position_run.font.bold = True
-
-            # Company name
-            company_para = doc.add_paragraph()
-            company_run = company_para.add_run(exp.company)
-            company_run.font.size = Pt(11)
-            company_run.font.bold = True
-            company_run.font.color.rgb = RGBColor(75, 85, 99)
-
-            # Date range and location
-            meta_parts = []
-            if exp.startDate:
-                date_str = f"{exp.startDate}"
-                if exp.endDate:
-                    date_str += f" - {exp.endDate if exp.endDate else 'Present'}"
-                meta_parts.append(date_str)
-            if exp.location:
-                meta_parts.append(exp.location)
-
-            if meta_parts:
-                meta_para = doc.add_paragraph(" • ".join(meta_parts))
-                meta_run = meta_para.runs[0]
-                meta_run.font.size = Pt(10)
-                meta_run.font.color.rgb = RGBColor(107, 114, 128)
-                meta_run.italic = True
-
+            # Header Row: Company & Dates
+            date_str = f"{exp.startDate}"
+            if exp.endDate:
+                date_str += f" - {exp.endDate}"
+            
+            self._create_two_col_row(doc, exp.company, date_str, bold=True)
+            
+            # Sub-header Row: Position & Location
+            self._create_two_col_row(doc, exp.position, exp.location or "")
+            
             # Bullets
             if exp.description:
                 for bullet in exp.description:
-                    bullet_para = doc.add_paragraph(bullet, style='List Bullet')
-                    bullet_para.paragraph_format.left_indent = Inches(0.25)
+                    p = doc.add_paragraph(style='List Bullet')
+                    p.paragraph_format.left_indent = Inches(0.2)
+                    p.paragraph_format.space_after = Pt(0)
+                    run = p.add_run(bullet)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(10)
 
-            doc.add_paragraph()  # Spacing between experiences
+            doc.add_paragraph() # Spacing
 
     def _add_docx_education(self, doc: Document, education: List):
-        """Add education section"""
-        self._add_docx_section(doc, "EDUCATION")
-
         for edu in education:
-            # Degree
+            date_str = f"{edu.startDate} - {edu.endDate}" if edu.endDate else edu.startDate
+            header_text = f"{edu.institution}"
+            # if edu.location: header_text += f", {edu.location}"
+            
+            self._create_two_col_row(doc, header_text, date_str, bold=True)
+            
+            # Degree line
             degree_str = edu.degree
-            if edu.field:
-                degree_str += f" in {edu.field}"
-            if edu.gpa:
-                degree_str += f" - GPA: {edu.gpa}"
-
-            degree_para = doc.add_paragraph()
-            degree_run = degree_para.add_run(degree_str)
-            degree_run.font.size = Pt(11.5)
-            degree_run.font.bold = True
-
-            # Institution
-            inst_para = doc.add_paragraph(edu.institution)
-            inst_run = inst_para.runs[0]
-            inst_run.font.color.rgb = RGBColor(75, 85, 99)
-
-            # Dates
-            if edu.startDate:
-                date_str = edu.startDate
-                if edu.endDate:
-                    date_str += f" - {edu.endDate}"
-                date_para = doc.add_paragraph(date_str)
-                date_run = date_para.runs[0]
-                date_run.font.size = Pt(10)
-                date_run.font.color.rgb = RGBColor(107, 114, 128)
-                date_run.italic = True
-
-            # Achievements
+            if edu.field: degree_str += f" in {edu.field}"
+            if edu.gpa: degree_str += f" (GPA: {edu.gpa})"
+            
+            p = doc.add_paragraph(degree_str)
+            p.paragraph_format.space_after = Pt(4)
+            p.runs[0].font.name = 'Arial'
+            p.runs[0].font.size = Pt(10)
+            
             if edu.achievements:
-                for achievement in edu.achievements:
-                    ach_para = doc.add_paragraph(achievement, style='List Bullet 2')
-                    ach_para.paragraph_format.left_indent = Inches(0.25)
+                p_cw = doc.add_paragraph(f"Relevant Coursework: {', '.join(edu.achievements)}")
+                p_cw.paragraph_format.space_after = Pt(8)
+                self._set_font(p_cw, size=10)
 
-            doc.add_paragraph()  # Spacing
+    def _add_docx_projects(self, doc: Document, projects: List, accent_rgb):
+        for proj in projects:
+            date_str = f"{proj.startDate} - {proj.endDate}" if proj.endDate else proj.startDate
+            self._create_two_col_row(doc, proj.name, date_str, bold=True)
+            
+            # Link
+            if proj.link:
+                p = doc.add_paragraph()
+                r = p.add_run(proj.link)
+                r.font.color.rgb = accent_rgb
+                r.font.underline = True
+                r.font.size = Pt(9)
+                p.paragraph_format.space_after = Pt(2)
+
+            # Tech
+            if proj.technologies:
+                p = doc.add_paragraph(f"Stack: {', '.join(proj.technologies)}")
+                p.paragraph_format.space_after = Pt(4)
+                if p.runs:
+                    p.runs[0].font.italic = True
+                    p.runs[0].font.size = Pt(10)
+                
+            # Bullets
+            if proj.highlights:
+                for highlight in proj.highlights:
+                    p = doc.add_paragraph(style='List Bullet')
+                    p.paragraph_format.left_indent = Inches(0.2)
+                    p.paragraph_format.space_after = Pt(0)
+                    run = p.add_run(highlight)
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(10)
+
+            doc.add_paragraph()
 
     def _add_docx_skills(self, doc: Document, skills: List[str]):
-        """Add technical skills section"""
-        self._add_docx_section(doc, "TECHNICAL SKILLS")
-
-        # Categorize skills
         categorized = self._categorize_skills(skills)
-
         if categorized:
             for category, skill_list in categorized.items():
-                skill_para = doc.add_paragraph()
-
-                # Category name (bold)
-                cat_run = skill_para.add_run(f"{category}: ")
-                cat_run.font.bold = True
-                cat_run.font.color.rgb = RGBColor(55, 65, 81)
-
-                # Skills list
-                skills_run = skill_para.add_run(", ".join(skill_list))
-                skills_run.font.color.rgb = RGBColor(75, 85, 99)
+                p = doc.add_paragraph()
+                r_cat = p.add_run(f"{category}: ")
+                r_cat.font.bold = True
+                r_cat.font.name = 'Arial'
+                r_cat.font.size = Pt(10)
+                
+                r_list = p.add_run(", ".join(skill_list))
+                r_list.font.name = 'Arial'
+                r_list.font.size = Pt(10)
         else:
-            # Simple list if no categorization
-            skills_para = doc.add_paragraph(" • ".join(skills))
-
-        doc.add_paragraph()  # Spacing
-
-    def _add_docx_projects(self, doc: Document, projects: List):
-        """Add projects section"""
-        self._add_docx_section(doc, "PROJECTS")
-
-        for project in projects:
-            # Project name
-            name_para = doc.add_paragraph()
-            name_run = name_para.add_run(project.name)
-            name_run.font.size = Pt(11.5)
-            name_run.font.bold = True
-
-            if project.link:
-                url_run = name_para.add_run(f" [{project.link}]")
-                url_run.font.size = Pt(10)
-                url_run.font.color.rgb = RGBColor(29, 78, 216)
-
-            # Description
-            # Highlights (instead of Description)
-            if project.highlights:
-                for highlight in project.highlights:
-                    para = doc.add_paragraph(highlight, style='List Bullet')
-                    para.paragraph_format.left_indent = Inches(0.25)
-
-            # Technologies
-            if project.technologies:
-                tech_para = doc.add_paragraph(f"Technologies: {', '.join(project.technologies)}")
-                tech_run = tech_para.runs[0]
-                tech_run.font.size = Pt(10)
-                tech_run.font.color.rgb = RGBColor(107, 114, 128)
-                tech_run.italic = True
-
-            doc.add_paragraph()  # Spacing
-
+             p = doc.add_paragraph(", ".join(skills))
+             self._set_font(p, size=10)
+        
     def _add_docx_certifications(self, doc: Document, certifications: List):
-        """Add certifications section"""
-        self._add_docx_section(doc, "CERTIFICATIONS")
-
         for cert in certifications:
-            cert_para = doc.add_paragraph()
-
-            # Certification name (bold)
-            name_run = cert_para.add_run(cert.name)
-            name_run.font.bold = True
-
-            # Issuer
-            if cert.issuer:
-                issuer_run = cert_para.add_run(f" - {cert.issuer}")
-                issuer_run.font.color.rgb = RGBColor(75, 85, 99)
-
-            # Date
-            if cert.date:
-                date_run = cert_para.add_run(f" ({cert.date})")
-                date_run.font.size = Pt(10)
-                date_run.font.color.rgb = RGBColor(107, 114, 128)
-
-        doc.add_paragraph()  # Spacing
-
-
-# ==================== FACTORY FUNCTION ====================
+            date_str = f"({cert.date})" if cert.date else ""
+            self._create_two_col_row(doc, f"{cert.name} - {cert.issuer}", date_str)
 
 def get_template_generator(template_dir: Optional[str] = None) -> TemplateDocumentGenerator:
-    """
-    Factory function to get a TemplateDocumentGenerator instance.
-
-    Args:
-        template_dir: Optional path to templates directory
-
-    Returns:
-        TemplateDocumentGenerator instance
-    """
     return TemplateDocumentGenerator(template_dir=template_dir)

@@ -199,6 +199,17 @@ class GeminiService:
             return None
 
         except Exception as e:
+            error_str = str(e).lower()
+            is_rate_limit = "429" in error_str or "resource" in error_str or "quota" in error_str
+
+            if is_rate_limit:
+                logger.warning(f"⚠️ Gemini Rate Limit hit: {e}")
+                # Log full details for debugging
+                logger.debug(f"Rate Limit Details: {dir(e)}")
+                if hasattr(e, 'response'):
+                    logger.debug(f"Response Headers: {e.response.headers if hasattr(e.response, 'headers') else 'N/A'}")
+                    logger.debug(f"Response Content: {e.response.text if hasattr(e.response, 'text') else 'N/A'}")
+
             # Log error with context
             log_ai_error(
                 e,
@@ -206,6 +217,7 @@ class GeminiService:
                     "retry_count": retry_count,
                     "prompt_length": len(prompt),
                     "model": self.model,
+                    "is_rate_limit": is_rate_limit
                 },
             )
 
@@ -446,14 +458,25 @@ STRICT REQUIREMENTS:
             tailored_exps = {exp["company"]: exp["description"] for exp in tailored["experiences"]}
             for exp in enhanced.experience:
                 if exp.company in tailored_exps:
-                    exp.description = tailored_exps[exp.company]
+                    desc = tailored_exps[exp.company]
+                    # Ensure description is always a list
+                    if isinstance(desc, str):
+                        # Split by newlines or keep as single item
+                        exp.description = [line.strip() for line in desc.split('\n') if line.strip()]
+                    elif isinstance(desc, list):
+                        exp.description = desc
         
         # Update project highlights (match by name)
         if "projects" in tailored:
             tailored_projs = {proj["name"]: proj.get("highlights", []) for proj in tailored["projects"]}
             for proj in enhanced.projects:
                 if proj.name in tailored_projs and tailored_projs[proj.name]:
-                    proj.highlights = tailored_projs[proj.name]
+                    highlights = tailored_projs[proj.name]
+                    # Ensure highlights is always a list
+                    if isinstance(highlights, str):
+                        proj.highlights = [line.strip() for line in highlights.split('\n') if line.strip()]
+                    elif isinstance(highlights, list):
+                        proj.highlights = highlights
         
         # Update skills
         if "skills" in tailored and tailored["skills"]:

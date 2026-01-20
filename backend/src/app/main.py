@@ -68,7 +68,6 @@ async def startup_event():
     logger.info("🚀 Resume Tailor API (Module 3) starting up...")
     logger.info(f"📝 Environment: {settings.ENVIRONMENT}")
     logger.info(f"🔗 API URL: {settings.API_URL}")
-    logger.info(f"📄 PDF Service URL: {settings.OPEN_RESUME_URL}")
     logger.info(f"🤖 Gemini Model: {settings.GEMINI_MODEL}")
     logger.info(f"🔑 Gemini API Key: {'✅ Configured' if settings.GEMINI_API_KEY else '❌ Missing'}")
     logger.info("✅ Server ready to accept requests")

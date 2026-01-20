@@ -95,8 +95,8 @@ async def tailor_resume(request: TailorRequest):
         if not tailor_response:
             logger.error("❌ Gemini AI failed to tailor resume")
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to process resume. The AI service encountered an error. Please try again.",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Gemini API is currently preserving energy (Rate Limit/Overloaded). Please try again in a moment.",
             )
 
         # Log success
