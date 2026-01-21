@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union, Dict
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator
 
@@ -46,6 +46,15 @@ class Education(BaseModel):
         default_factory=list,
         validation_alias=AliasChoices("achievements", "coursework"),
     )
+
+    @field_validator("achievements", mode="before")
+    @classmethod
+    def coerce_achievements(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [s.strip() for s in v.split('\n') if s.strip()]
+        return v
 
 
 class Experience(BaseModel):
@@ -122,8 +131,8 @@ class Resume(BaseModel):
     education: List[Education] = Field(default_factory=list)
     experience: List[Experience] = Field(default_factory=list)
 
-    # Some legacy exports sent skills as an object or category list; coerce to List[str].
-    skills: List[str] = Field(default_factory=list)
+    # Allow skills to be a list or a dictionary of categories
+    skills: Union[Dict[str, List[str]], List[str]] = Field(default_factory=list)
 
     projects: List[Project] = Field(default_factory=list)
     certifications: List[Certification] = Field(default_factory=list)
@@ -142,25 +151,39 @@ class Resume(BaseModel):
     def coerce_skills(cls, v):
         if v is None:
             return []
-        # legacy: dict (category -> list/str)
+        
+        # If it's already a dict of lists, return it as is
         if isinstance(v, dict):
-            out: List[str] = []
-            for val in v.values():
+            # Validate values are lists
+            cleaned = {}
+            for k, val in v.items():
                 if isinstance(val, list):
-                    out.extend(val)
-                else:
-                    out.extend(re.split(r"[,;\n]", str(val)))
-            return [s.strip() for s in out if str(s).strip()]
+                    cleaned[k] = [str(s).strip() for s in val if str(s).strip()]
+                elif isinstance(val, str):
+                    cleaned[k] = [s.strip() for s in re.split(r"[,;\n]", val) if s.strip()]
+            return cleaned
 
         # legacy: list of objects [{category, skills:"a,b"}]
         if isinstance(v, list):
-            if all(isinstance(x, dict) for x in v):
-                out: List[str] = []
+            # Check if it's the legacy object format
+            if v and isinstance(v[0], dict) and ("category" in v[0]):
+                # Convert to Dict[str, List[str]]
+                new_skills = {}
                 for item in v:
+                    cat = item.get("category", "Other")
                     raw = item.get("skills") or item.get("items") or ""
-                    out.extend(re.split(r"[,;\n]", str(raw)))
-                return [s.strip() for s in out if str(s).strip()]
-            return [str(s).strip() for s in v if str(s).strip()]
+                    if isinstance(raw, list):
+                        new_skills[cat] = raw
+                    else:
+                        new_skills[cat] = [s.strip() for s in re.split(r"[,;\n]", str(raw)) if s.strip()]
+                return new_skills
+
+            # Otherwise treat as flat list
+            out = []
+            for item in v:
+                if isinstance(item, str):
+                    out.append(item.strip())
+            return out
 
         if isinstance(v, str):
             return [s.strip() for s in re.split(r"[,;\n]", v) if s.strip()]
@@ -170,7 +193,7 @@ class Resume(BaseModel):
     @field_validator("skills")
     @classmethod
     def validate_skills(cls, v):
-        """Ensure skills list is not empty"""
+        """Ensure skills list/dict is not empty"""
         if not v:
             raise ValueError("At least one skill is required")
         return v

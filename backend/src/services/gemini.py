@@ -589,11 +589,32 @@ STRICT REQUIREMENTS:
             for token in job_description.split()
             if len(token) >= 2
         )
-        resume_skills = {skill.lower() for skill in resume.skills}
+        
+        # Flatten skills if they are a dict
+        if isinstance(resume.skills, dict):
+            flat_skills = []
+            for category_skills in resume.skills.values():
+                flat_skills.extend(category_skills)
+            resume_skills = {skill.lower() for skill in flat_skills}
+            
+            # For ordered return, we need a flat list again
+            original_skills_ordered = flat_skills
+        else:
+            resume_skills = {skill.lower() for skill in resume.skills}
+            original_skills_ordered = resume.skills
+
         matched = sorted(list(resume_skills.intersection(jd_tokens)))
         # Return capitalized form based on original skills order
-        ordered = [skill for skill in resume.skills if skill.lower() in matched]
-        return ordered
+        ordered = [skill for skill in original_skills_ordered if skill.lower() in matched]
+        # De-duplicate while preserving order
+        seen = set()
+        final_ordered = []
+        for s in ordered:
+            if s.lower() not in seen:
+                final_ordered.append(s)
+                seen.add(s.lower())
+                
+        return final_ordered
 
     def _is_resume_unchanged(self, original: Resume, tailored: Resume) -> bool:
         """Check if tailored resume is identical to the original."""
@@ -640,10 +661,19 @@ STRICT REQUIREMENTS:
 
     def _extract_resume_text(self, resume: Resume) -> str:
         """Extract all text from resume for analysis"""
+        # Flatten skills for text extraction
+        if isinstance(resume.skills, dict):
+            flat_skills = []
+            for cats in resume.skills.values():
+                flat_skills.extend(cats)
+            skills_str = " ".join(flat_skills)
+        else:
+            skills_str = " ".join(resume.skills)
+
         text_parts = [
             resume.personalInfo.name,
             resume.personalInfo.summary or "",
-            " ".join(resume.skills),
+            skills_str,
         ]
 
         # Add experience
