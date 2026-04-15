@@ -250,7 +250,19 @@ function setupEventListeners() {
 
     // Color picker synchronization - setup after form is ready
     setTimeout(setupColorPicker, 100);
+
+    // History delete delegation (CSP safe)
+    if (elements.historyList) {
+        elements.historyList.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.history-delete-btn');
+            if (btn && btn.dataset.id) {
+                await deleteHistory(btn.dataset.id);
+            }
+        });
+    }
 }
+// Remove window.deleteHistory as it is no longer used
+// window.deleteHistory = ... (removed)
 
 // Setup Color Picker Synchronization
 function setupColorPicker() {
@@ -735,10 +747,27 @@ async function restoreDraftOrPopulate(resume) {
 
     // Fallback to saved resume
     populateForm(resume);
+    const state = collectResumeFormState();
     if (!state) return false;
-    const s = JSON.stringify(state);
     // cheap check to avoid storing completely blank drafts
-    return s.replace(/[\s"{}\[\]:,]/g, '').length > 0;
+    return JSON.stringify(state).replace(/[\s"{}\[\]:,]/g, '').length > 0;
+}
+
+function hasDraftContent(state) {
+    if (!state) return false;
+    if (state.resumeName && state.resumeName.trim()) return true;
+
+    // Check personal info
+    const pi = state.personalInfo;
+    if (pi && Object.values(pi).some(val => val && String(val).trim().length > 0)) return true;
+
+    // Check arrays
+    if (state.experience?.length > 0) return true;
+    if (state.education?.length > 0) return true;
+    if (state.projects?.length > 0) return true;
+    if (state.skills?.length > 0) return true;
+
+    return false;
 }
 
 function collectResumeFormState() {
@@ -749,8 +778,8 @@ function collectResumeFormState() {
         return (document.querySelector(`[name="${b}"]`)?.value || '').trim();
     };
 
-            // No draft: pre-populate one empty entry per section for guidance
-            prepopulateEmptySections();
+    // No draft: pre-populate one empty entry per section for guidance
+    // prepopulateEmptySections(); // Removed undefined function call to fix ReferenceError
     const state = {
         resumeName: get('resumeName'),
         personalInfo: {
@@ -1651,6 +1680,8 @@ async function handleTailor() {
     console.log(JSON.stringify(currentResume, null, 2));
     console.log('=== END DEBUG ===');
 
+    let progressInterval = null;
+
     try {
         // Show loading with progress message
         elements.loading.classList.remove('hidden');
@@ -1661,7 +1692,8 @@ async function handleTailor() {
         // Update loading message with animated progress
         const loadingMsg = elements.loading.querySelector('p') || elements.loading;
         let dotCount = 0;
-        const progressInterval = setInterval(() => {
+
+        progressInterval = setInterval(() => {
             dotCount = (dotCount + 1) % 4;
             loadingMsg.textContent = 'AI is analyzing and optimizing your resume' + '.'.repeat(dotCount);
         }, 500);
@@ -1700,7 +1732,7 @@ async function handleTailor() {
         showSuccess(`ATS Score: ${result.atsScore}/100`);
 
     } catch (error) {
-        clearInterval(progressInterval);
+        if (progressInterval) clearInterval(progressInterval);
         console.error('Tailor error:', error);
         elements.loading.classList.add('hidden');
         showError(error.message || 'Tailoring failed. Check backend connection.');
@@ -1891,7 +1923,7 @@ async function loadHistory() {
                 <h4 class="history-title">${companyDisplay}</h4>
                 <span class="history-meta">${entry.userName || ''} • ${dateStr}</span>
             </div>
-            <button class="history-delete" onclick="deleteHistory('${entry.id}')" title="Delete">
+            <button class="history-delete-btn" data-id="${entry.id}" title="Delete">
                 <span>✕</span>
             </button>
         `;

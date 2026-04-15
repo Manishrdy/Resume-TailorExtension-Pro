@@ -21,6 +21,7 @@
         GLASSDOOR: 'glassdoor',
         ASHBY: 'ashby',
         ORGANIC: 'organic',
+        FALLBACK: 'fallback',
         NONE: 'none'
     });
 
@@ -85,10 +86,24 @@
             source = PRIMARY_SOURCES.ORGANIC;
         }
 
-        const cleaned = cleanText(raw);
+        let cleaned = cleanText(raw);
+        let success = cleaned.length >= MIN_TEXT_LEN;
 
-        const success = cleaned.length >= MIN_TEXT_LEN;
-        const needsManual = !success && !isPrimaryHost(host); // only push manual for "other sites"
+        // 3) Fallback: if primary/organic failed, scrape the entire body
+        if (!success) {
+            console.warn('Primary scraping failed, attempting fallback (whole page)...');
+            const bodyText = document.body?.innerText || '';
+            cleaned = cleanText(bodyText);
+            success = cleaned.length >= MIN_TEXT_LEN;
+
+            if (success) {
+                source = PRIMARY_SOURCES.FALLBACK;
+            }
+        }
+
+        // Always flag fallback content as needing manual review
+        // For primary hosts, if we fell back to full body, we also want manual review
+        const needsManual = !success || source === PRIMARY_SOURCES.FALLBACK || (!isPrimaryHost(host) && source === PRIMARY_SOURCES.ORGANIC);
 
         return {
             text: success ? cleaned : '',
